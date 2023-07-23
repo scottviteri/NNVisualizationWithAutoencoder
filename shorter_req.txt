@@ -6,3 +6,5 @@ datasets
 openai
 weightwatcher
 black
+tabulate
+accelerate

@@ -10,150 +10,55 @@ from torch.optim import AdamW
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 from transformers import AutoTokenizer, AutoModelForCausalLM
+import pandas as pd
+import tabulate
 
 from utils import unembed_and_decode
 from autoencoder import LinearAutoEncoder
 from training import DeepDreamLLMTrainer
 
-# prompt: Generate random pairs of sentences using gpt2, and get the average ada embedding distance
 
-# def calc_average_emb_distance(num_pairs):
-#     # Initialize the tokenizer
-#     tokenizer = AutoTokenizer.from_pretrained('distilgpt2')
-
-#     # Initialize gpt2
-#     model = AutoModelForCausalLM.from_pretrained('distilgpt2').to(device)
-#     model.eval()
-
-#     pbar = tqdm(range(num_pairs))
-#     similarity_values = []
-#     # Generate random pairs of sentences
-#     for i in pbar:
-#         sentence1 = generate_sentence(model, tokenizer, max_length=50)
-#         sentence2 = generate_sentence(model, tokenizer, max_length=50)
-#         # Compute cosine similarity between embeddings
-#         similarity = get_sentence_similarity(sentence1, sentence2)
-#         # Store the similarity value
-#         similarity_values.append(similarity)
-#         pbar.set_description(f"Running average: {np.mean(similarity_values)}")
-#     # Print the average similarity value
-#     return np.mean(similarity_values)
-
-# # calc_average_emb_distance(10) #0.6956303872374302
-
-
-def train_autoencoder_experiment():
+def train_autoencoder_experiment(train_autoencoder=True):
     # Initialize the tokenizer
     tokenizer = AutoTokenizer.from_pretrained("distilgpt2", use_fast=True)
     model = AutoModelForCausalLM.from_pretrained("distilgpt2")
     autoencoder = LinearAutoEncoder("distilgpt2")
-    autoencoder.load_state_dict(
-        torch.load("resources/saved_models/linear_autoencoder.pt", map_location="cpu")
-    )
     optimizer = torch.optim.AdamW(autoencoder.parameters(), lr=0.01)
 
     trainer = DeepDreamLLMTrainer(
-        model=model, tokenizer=tokenizer, randomize_sentences=True, optimizer=optimizer, autoencoder=autoencoder
+        model=model,
+        tokenizer=tokenizer,
+        randomize_sentences=True,
+        optimizer=optimizer,
+        autoencoder=autoencoder,
+        use_openai=False,
     )
     # tokenizer.pad_token = tokenizer.eos_token
     # TODO I think a smaller lr will do better
-
-    trainer.train_autoencoder(
-        num_epochs=2, print_every=100, use_openai=False, save_path="test_1.pt"
-    )  # load_path =
-
-    # for layer in layers:
-        # for i in range(100):
-            #losses, log_dict = optimize_encoding_average(neuron_layer=layer, neuron_index=i)
+    if train_autoencoder:
+        trainer.train_autoencoder(
+            num_epochs=2, print_every=100, use_openai=False, save_path="test_1.pt"
+        )
+    return trainer
 
 
-def optimize_encoding_average():
-    def optimize_for_neuron_whole_input(
-        neuron_index=0,
-        layer_num=1,
-        mlp_or_attention="mlp",
-        num_tokens=10,
-        num_iterations=200,
-        model_cls=Gpt2Autoencoder,
-    ):
-        """
-        Args:
-        neuron_indices: List of indices.
-        mlp_or_attention (str): 'mlp' or 'attention'
-        """
-        model = AutoModelForCausalLM.from_pretrained("distilgpt2").to(device)
-        autoencoder = model_cls("distilgpt2").to(device)
-        autoencoder.load_state_dict(torch.load("transformer-autoencoder.pt"))
+def optimize_encoding_average(trainer: DeepDreamLLMTrainer):
+    """
+    Loads a trained autoencoder and then optimizes the encoding for a random
+    sentence in order to maximally activate a neuron in the model.
+    """
 
-        # Get the dimensionality of the latent space
-        # latent_dim = autoencoder.latent_dim
-        latent_dim = 100
-
-        log_dict = {}
-
-        # TODO Start with a random sentence
-        torch.manual_seed(42)
-        sentence = generate_sentence(model, tokenizer, max_length=50)
-        print("Original sentence is:")
-        print(sentence)
-        log_dict["original_sentence"] = sentence
-
-        input_ids = tokenizer.encode(sentence, return_tensors="pt").to(device)
-        original_embeddings = model.transformer.wte(input_ids)
-        latent = autoencoder.encoder(original_embeddings)
-        latent_vectors = latent.detach().clone().to(device)
-        latent_vectors.requires_grad = True
-        # latent_vectors = torch.randn((1, num_tokens, latent_dim), device=device, requires_grad=True)
-        print("original reconstructed sentence is ")
-        with torch.no_grad():
-            og_reconstructed_sentence = unembed_and_decode(
-                autoencoder.decoder(latent_vectors)
-            )[0]
-            log_dict["original_sentence_reconstructed"] = og_reconstructed_sentence
-        # Create an optimizer for the latent vectors
-        optimizer = AdamW(
-            [latent_vectors], lr=0.1
-        )  # You may need to adjust the learning rate
-
-        if "mlp" in mlp_or_attention:
-            layer = model.transformer.h[layer_num].mlp.c_fc
-        elif "attention" in mlp_or_attention:
-            layer = model.transformer.h[layer_num].attn.c_attn
-        else:
-            raise NotImplementedError("Haven't implemented attention block yet")
-
-        activation_saved = [torch.tensor(0.0, device=device)]
-
-        def hook(model, input, output):
-            # The output is a tensor. We're getting the average activation of the neuron across all tokens.
-            activation = output[0, :, neuron_index].mean()
-            activation_saved[0] = activation
-
-        handle = layer.register_forward_hook(hook)
-
-        losses, log_dict["reconstructed_sentences"] = [], []
-        for i in tqdm(range(num_iterations), position=0, leave=True):
-            # Construct input for the model using the embeddings directly
-            embeddings = autoencoder.decoder(latent_vectors)
-            outputs = model(inputs_embeds=embeddings)
-            # We want to maximize activation, which is equivalent to minimizing negative activation
-            loss = -torch.sigmoid(activation_saved[0])
-            loss.backward()
-            optimizer.step()
-            losses.append(loss.item())
-            if i % (num_iterations // 30) == 0:
-                tqdm.write(f"Loss at step {i}: {loss.item()}\n", end="")
-                reconstructed_sentence = unembed_and_decode(embeddings)[0]
-                tqdm.write(reconstructed_sentence, end="")
-                log_dict["reconstructed_sentences"].append(reconstructed_sentence)
-            optimizer.zero_grad()
-
-        handle.remove()  # Don't forget to remove the hook!
-        return losses, log_dict
-
-    losses, log_dict = optimize_for_neuron_whole_input(
-        neuron_index=2, layer_num=5, num_tokens=20, model_cls=Debug
+    losses, log_dict = trainer.optimize_for_neuron_whole_input(
+        neuron_index=2,
+        layer_num=5,
+        num_tokens=20,
+        num_iterations=100,
     )
+
+    # display in a table the sentences in log_dict using tabulate
+    df = pd.DataFrame.from_dict(log_dict)
+    print(tabulate.tabulate(df, headers="keys", tablefmt="psql"))
+
     # Generate x-axis values
     loss_iterations = range(1, len(losses) + 1)
 
@@ -314,5 +219,37 @@ def baseline_optimize_encoding_average():
     plt.show()
 
 
+# prompt: Generate random pairs of sentences using gpt2, and get the average ada embedding distance
+
+# def calc_average_emb_distance(num_pairs):
+#     # Initialize the tokenizer
+#     tokenizer = AutoTokenizer.from_pretrained('distilgpt2')
+
+#     # Initialize gpt2
+#     model = AutoModelForCausalLM.from_pretrained('distilgpt2').to(device)
+#     model.eval()
+
+#     pbar = tqdm(range(num_pairs))
+#     similarity_values = []
+#     # Generate random pairs of sentences
+#     for i in pbar:
+#         sentence1 = generate_sentence(model, tokenizer, max_length=50)
+#         sentence2 = generate_sentence(model, tokenizer, max_length=50)
+#         # Compute cosine similarity between embeddings
+#         similarity = get_sentence_similarity(sentence1, sentence2)
+#         # Store the similarity value
+#         similarity_values.append(similarity)
+#         pbar.set_description(f"Running average: {np.mean(similarity_values)}")
+#     # Print the average similarity value
+#     return np.mean(similarity_values)
+
+# # calc_average_emb_distance(10) #0.6956303872374302
+
+
+def main():
+    trainer = train_autoencoder_experiment(train_autoencoder=False)
+    optimize_encoding_average(trainer)
+
+
 if __name__ == "__main__":
-    train_autoencoder_experiment()
+    main()

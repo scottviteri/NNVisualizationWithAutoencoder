@@ -31,6 +31,11 @@ def unembed_and_decode(model, tokenizer, embeds_input):
     and grabbing the vocab token with the highest probability on each token.
 
     Also do this with the unembedding matrix as well.
+
+    Args:
+        model - the model to use
+        tokenizer - the tokenizer to use
+        embeds_input - the embeddings to decode
     """
     with torch.no_grad():
         with autocast():
@@ -51,9 +56,15 @@ def unembed_and_decode(model, tokenizer, embeds_input):
     return text
 
 
-def generate_sentence(model, tokenizer, max_length=50, device="cpu"):
+def generate_sentence(model, tokenizer, max_length=50, seed=None):
+    if seed is not None:
+        random.seed(seed)
+        torch.manual_seed(seed)
     # Randomly select a token
     random_token = random.randint(0, 50256)
+
+    # get the device of the model
+    device = next(model.parameters()).device
 
     # Convert the token to a tensor
     input_ids = torch.tensor([[random_token]]).to(device)
@@ -77,5 +88,5 @@ def gen_sentences(model, tokenizer, device="cpu"):
     sentences = []
     # Generate random pairs of sentences
     for _ in pbar:
-        sentences.append(generate_sentence(model, tokenizer, max_length=50, device=device))
+        sentences.append(generate_sentence(model, tokenizer, max_length=50))
     return sentences
