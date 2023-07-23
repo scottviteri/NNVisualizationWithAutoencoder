@@ -4,26 +4,54 @@ This is the file for defining the auto-encoder classes to experiment with
 
 
 import torch
-from torch.optim import AdamW
-from tqdm import tqdm
-import matplotlib.pyplot as plt
 from torch.nn import MSELoss, Linear, TransformerEncoderLayer, LayerNorm, TransformerEncoder
-from torch.optim import Adam
-from torch.cuda.amp import autocast
 import copy
-#from tqdm import tqdm
-import openai
-import numpy as np
 import random
 from torch import nn
-import random
-from IPython.display import clear_output
-import transformers
 from transformers import AutoModel, AutoTokenizer, AutoModelForCausalLM
-from tqdm.auto import tqdm
-import weightwatcher as ww
-import code
 
+class mock_transformer(torch.nn.Module):
+    def __init__(self):
+        """
+        Mock transformer model for testing.
+        Implements layers:
+            wte
+        """
+        super().__init__()
+        # vocab size to 768
+        self.wte = Linear(50257, 768)
+
+    def forward(self, input_ids, attention_mask=None):
+        return self.wte(input_ids)
+
+class mock_gpt2(torch.nn.Module):
+    def __init__(self):
+        """
+        Mock gpt2 model for testing.
+        Implements layers:
+            lm_head,
+            transformer.wte
+        Implements methods:
+            generate,
+            normal forward,
+            inputs_embeds forward,
+        """
+        super().__init__()
+        self.lm_head = Linear(768, 768)
+        self.transformer = mock_transformer()
+
+    def forward(self, inputs_ids=None, input_embeds=None, attention_mask=None):
+        """
+        Accepts either input_ids or input_embeds. Returns logits.
+        Args:
+            input_ids: torch.tensor of shape (batch_size, sequence_length, vocab_size)
+            input_embeds: torch.tensor of shape (batch_size, sequence_length, embedding_size)
+        Returns:
+            torch.tensor of shape (batch_size, sequence_length, embedding_size)
+        """
+        if input_embeds is None:
+            input_embeds = self.transformer(inputs_ids)
+        return self.lm_head(input_embeds)
 
 
 class Gpt2Autoencoder(torch.nn.Module):
@@ -56,7 +84,6 @@ class Gpt2Autoencoder(torch.nn.Module):
         return reconstructed_embeddings
     
 
-
 class Gpt2AutoencoderBoth(torch.nn.Module):
     def __init__(self, model_checkpoint, latent_dim=100, nhead=2, num_layers=6):
         super().__init__()
@@ -83,7 +110,7 @@ class Gpt2AutoencoderBoth(torch.nn.Module):
     
 
 class LinearAutoEncoder(torch.nn.Module):
-    def __init__(self, model_checkpoint, latent_dim=100, nhead=2, num_layers=6):
+    def __init__(self, model_checkpoint, latent_dim=100):
         super().__init__()
 
         # Load the pretrained model

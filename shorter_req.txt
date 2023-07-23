@@ -5,3 +5,4 @@ matplotlib
 datasets
 openai
 weightwatcher
+black

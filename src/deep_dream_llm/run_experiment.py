@@ -1,34 +1,19 @@
 """
-A sample experiment runner
+A sample experiment runner.
+Each function is a self contained experiment.
+
 TODO: Move this file outside src and into an experiments folder
-""" 
+"""
 
 import torch
 from torch.optim import AdamW
 from tqdm import tqdm
 import matplotlib.pyplot as plt
-from torch.nn import MSELoss, Linear, TransformerEncoderLayer, LayerNorm, TransformerEncoder
-from torch.optim import Adam
-from torch.cuda.amp import autocast
-import copy
-#from tqdm import tqdm
-import openai
-import numpy as np
-import random
-from torch import nn
-import random
-from IPython.display import clear_output
-import transformers
-from transformers import AutoModel, AutoTokenizer, AutoModelForCausalLM
-from tqdm.auto import tqdm
-import weightwatcher as ww
-import code
+from transformers import AutoTokenizer, AutoModelForCausalLM
 
-
-from matplotlib.pyplot import plt
-
-from .utils import unembed_and_decode, get_sentence_similarity
-from .autoencoder import LinearAutoEncoder
+from utils import unembed_and_decode
+from autoencoder import LinearAutoEncoder
+from training import DeepDreamLLMTrainer
 
 # prompt: Generate random pairs of sentences using gpt2, and get the average ada embedding distance
 
@@ -59,25 +44,135 @@ from .autoencoder import LinearAutoEncoder
 
 def train_autoencoder_experiment():
     # Initialize the tokenizer
-    tokenizer = AutoTokenizer.from_pretrained('distilgpt2')
-    tokenizer.pad_token = tokenizer.eos_token
-    # Initialize autoencoder
-    autoencoder = LinearAutoEncoder('distilgpt2', latent_dim=100).to(device)
+    tokenizer = AutoTokenizer.from_pretrained("distilgpt2", use_fast=True)
+    model = AutoModelForCausalLM.from_pretrained("distilgpt2")
+    autoencoder = LinearAutoEncoder("distilgpt2")
+    autoencoder.load_state_dict(
+        torch.load("resources/saved_models/linear_autoencoder.pt", map_location="cpu")
+    )
+    optimizer = torch.optim.AdamW(autoencoder.parameters(), lr=0.01)
 
-    # Initialize loss function, optimizer, and gradient scaler for mixed-precision training
-    criterion = torch.nn.MSELoss()
-    optimizer = torch.optim.AdamW(autoencoder.parameters(), lr=.01)
+    trainer = DeepDreamLLMTrainer(
+        model=model, tokenizer=tokenizer, randomize_sentences=True, optimizer=optimizer, autoencoder=autoencoder
+    )
+    # tokenizer.pad_token = tokenizer.eos_token
     # TODO I think a smaller lr will do better
 
-    # # watch the weights
-    # watcher = ww.WeightWatcher(model=autoencoder)
-    # details = watcher.analyze(plot=False)
-    # Call the training function without a path to a checkpoint
-    train_autoencoder(autoencoder, criterion, optimizer, model, tokenizer, num_epochs=3000, print_every=100, use_openai=True, random_sentences=True) #load_path =
+    trainer.train_autoencoder(
+        num_epochs=2, print_every=100, use_openai=False, save_path="test_1.pt"
+    )  # load_path =
+
+    # for layer in layers:
+        # for i in range(100):
+            #losses, log_dict = optimize_encoding_average(neuron_layer=layer, neuron_index=i)
+
+
+def optimize_encoding_average():
+    def optimize_for_neuron_whole_input(
+        neuron_index=0,
+        layer_num=1,
+        mlp_or_attention="mlp",
+        num_tokens=10,
+        num_iterations=200,
+        model_cls=Gpt2Autoencoder,
+    ):
+        """
+        Args:
+        neuron_indices: List of indices.
+        mlp_or_attention (str): 'mlp' or 'attention'
+        """
+        model = AutoModelForCausalLM.from_pretrained("distilgpt2").to(device)
+        autoencoder = model_cls("distilgpt2").to(device)
+        autoencoder.load_state_dict(torch.load("transformer-autoencoder.pt"))
+
+        # Get the dimensionality of the latent space
+        # latent_dim = autoencoder.latent_dim
+        latent_dim = 100
+
+        log_dict = {}
+
+        # TODO Start with a random sentence
+        torch.manual_seed(42)
+        sentence = generate_sentence(model, tokenizer, max_length=50)
+        print("Original sentence is:")
+        print(sentence)
+        log_dict["original_sentence"] = sentence
+
+        input_ids = tokenizer.encode(sentence, return_tensors="pt").to(device)
+        original_embeddings = model.transformer.wte(input_ids)
+        latent = autoencoder.encoder(original_embeddings)
+        latent_vectors = latent.detach().clone().to(device)
+        latent_vectors.requires_grad = True
+        # latent_vectors = torch.randn((1, num_tokens, latent_dim), device=device, requires_grad=True)
+        print("original reconstructed sentence is ")
+        with torch.no_grad():
+            og_reconstructed_sentence = unembed_and_decode(
+                autoencoder.decoder(latent_vectors)
+            )[0]
+            log_dict["original_sentence_reconstructed"] = og_reconstructed_sentence
+        # Create an optimizer for the latent vectors
+        optimizer = AdamW(
+            [latent_vectors], lr=0.1
+        )  # You may need to adjust the learning rate
+
+        if "mlp" in mlp_or_attention:
+            layer = model.transformer.h[layer_num].mlp.c_fc
+        elif "attention" in mlp_or_attention:
+            layer = model.transformer.h[layer_num].attn.c_attn
+        else:
+            raise NotImplementedError("Haven't implemented attention block yet")
+
+        activation_saved = [torch.tensor(0.0, device=device)]
+
+        def hook(model, input, output):
+            # The output is a tensor. We're getting the average activation of the neuron across all tokens.
+            activation = output[0, :, neuron_index].mean()
+            activation_saved[0] = activation
+
+        handle = layer.register_forward_hook(hook)
+
+        losses, log_dict["reconstructed_sentences"] = [], []
+        for i in tqdm(range(num_iterations), position=0, leave=True):
+            # Construct input for the model using the embeddings directly
+            embeddings = autoencoder.decoder(latent_vectors)
+            outputs = model(inputs_embeds=embeddings)
+            # We want to maximize activation, which is equivalent to minimizing negative activation
+            loss = -torch.sigmoid(activation_saved[0])
+            loss.backward()
+            optimizer.step()
+            losses.append(loss.item())
+            if i % (num_iterations // 30) == 0:
+                tqdm.write(f"Loss at step {i}: {loss.item()}\n", end="")
+                reconstructed_sentence = unembed_and_decode(embeddings)[0]
+                tqdm.write(reconstructed_sentence, end="")
+                log_dict["reconstructed_sentences"].append(reconstructed_sentence)
+            optimizer.zero_grad()
+
+        handle.remove()  # Don't forget to remove the hook!
+        return losses, log_dict
+
+    losses, log_dict = optimize_for_neuron_whole_input(
+        neuron_index=2, layer_num=5, num_tokens=20, model_cls=Debug
+    )
+    # Generate x-axis values
+    loss_iterations = range(1, len(losses) + 1)
+
+    # Plot the losses
+    plt.plot(loss_iterations, losses, "-o")
+
+    # Set the plot title and labels
+    plt.title("Loss over Epochs")
+    plt.xlabel("Epochs")
+    plt.ylabel("Loss")
+
+    # Show the plot
+    plt.show()
+
 
 def baseline_optimize_encoding():
-
-    def optimize_for_neuron(starting_sentence, layer_num=1, neuron_index=0, mlp_or_attention="mlp"):
+    def optimize_for_neuron(
+        starting_sentence, layer_num=1, neuron_index=0, mlp_or_attention="mlp"
+    ):
         """
         Args:
             neuron_indices: List of indices.
@@ -94,37 +189,43 @@ def baseline_optimize_encoding():
         embeddings.requires_grad_(True)
 
         # Create an optimizer for the embeddings
-        optimizer = AdamW([embeddings], lr=0.1)  # You may need to adjust the learning rate
+        optimizer = AdamW(
+            [embeddings], lr=0.1
+        )  # You may need to adjust the learning rate
         pre_embeddings = embeddings.detach().clone()
         print(embeddings)
         print(unembed_and_decode(pre_embeddings))
         len_example = embeddings.shape[1] - 1
 
-        if 'mlp' in mlp_or_attention:
+        if "mlp" in mlp_or_attention:
             layer = model.transformer.h[layer_num].mlp
         else:
             raise NotImplementedError("Haven't implemented attention block yet")
         activation_saved = [torch.tensor(0.0)]
+
         def hook(model, input, output):
             # The output is a tensor. You can index it to get the activation of a specific neuron.
             # Here we're getting the activation of the 0th neuron.
             # TODO: Figure out what neruon this is actually grabbing. Why is it
             activation = output[0, len_example, neuron_index]
             activation_saved[0] = activation
+
         handle = layer.register_forward_hook(hook)
 
         losses = []
         dist = 0.0
         for i in tqdm(range(100)):
-            outputs = model(inputs_embeds=embeddings, attention_mask=inputs.attention_mask)
+            outputs = model(
+                inputs_embeds=embeddings, attention_mask=inputs.attention_mask
+            )
             loss = -torch.sigmoid(activation_saved[0])
             loss.backward()
             optimizer.step()
             dist = torch.sum(embeddings - pre_embeddings).item()
             losses.append(loss)
             if i % 25 == 0:
-            tqdm.write(f"\n{dist} and then {loss}\n")
-            tqdm.write(unembed_and_decode(embeddings)[0])
+                tqdm.write(f"\n{dist} and then {loss}\n")
+                tqdm.write(unembed_and_decode(embeddings)[0])
             optimizer.zero_grad()
 
         return losses
@@ -134,16 +235,23 @@ def baseline_optimize_encoding():
     input_sentence_3 = "I'm sorry for the misunderstanding, but as an AI developed by OpenAI, I don't have direct access to individual sentences or documents from my training data. I was trained on a mixture of licensed data, data created by human trainers, and publicly available data. These sources may contain a wide range of data, including books, websites, and other texts, so I don't have the ability to recall or generate any specific sentence from the training data. I generate responses based on patterns and information in the data I was trained on."
     losses = optimize_for_neuron(input_sentence_3, neuron_index=2, layer_num=5)
     # Plot losses
-    plt.figure(figsize=(10,6))
+    plt.figure(figsize=(10, 6))
     plt.plot([loss.cpu().detach() for loss in losses])
-    plt.title('Loss curve')
-    plt.xlabel('Iteration')
-    plt.ylabel('Loss')
+    plt.title("Loss curve")
+    plt.xlabel("Iteration")
+    plt.ylabel("Loss")
     plt.grid(True)
     plt.show()
 
+
 def baseline_optimize_encoding_average():
-    def optimize_for_neuron_whole_input(neuron_index=0, layer_num=1, mlp_or_attention="mlp", num_tokens=10, num_iterations=200):
+    def optimize_for_neuron_whole_input(
+        neuron_index=0,
+        layer_num=1,
+        mlp_or_attention="mlp",
+        num_tokens=10,
+        num_iterations=200,
+    ):
         """
         Args:
         neuron_indices: List of indices.
@@ -152,21 +260,27 @@ def baseline_optimize_encoding_average():
         model = AutoModelForCausalLM.from_pretrained("distilgpt2").to(device)
 
         # Start with random embeddings
-        embeddings = torch.randn((1, num_tokens, model.config.n_embd), device=device, requires_grad=True)
+        embeddings = torch.randn(
+            (1, num_tokens, model.config.n_embd), device=device, requires_grad=True
+        )
 
         # Create an optimizer for the embeddings
-        optimizer = AdamW([embeddings], lr=0.1)  # You may need to adjust the learning rate
+        optimizer = AdamW(
+            [embeddings], lr=0.1
+        )  # You may need to adjust the learning rate
 
-        if 'mlp' in mlp_or_attention:
+        if "mlp" in mlp_or_attention:
             layer = model.transformer.h[layer_num].mlp
         else:
             raise NotImplementedError("Haven't implemented attention block yet")
 
         activation_saved = [torch.tensor(0.0, device=device)]
+
         def hook(model, input, output):
             # The output is a tensor. We're getting the average activation of the neuron across all tokens.
             activation = output[0, :, neuron_index].mean()
             activation_saved[0] = activation
+
         handle = layer.register_forward_hook(hook)
 
         pbar = tqdm(range(num_iterations), position=0, leave=True)
@@ -179,20 +293,26 @@ def baseline_optimize_encoding_average():
             loss.backward()
             optimizer.step()
             losses.append(loss.item())
-            if i % (num_iterations//30) == 0:
-                pbar.set_description(f"""Loss at step {i}: {loss.item()}\n\n
-                                        Current sentence: {unembed_and_decode(embeddings)[0]}\n""")
+            if i % (num_iterations // 30) == 0:
+                pbar.set_description(
+                    f"""Loss at step {i}: {loss.item()}\n\n
+                                        Current sentence: {unembed_and_decode(embeddings)[0]}\n"""
+                )
             optimizer.zero_grad()
 
         handle.remove()  # Don't forget to remove the hook!
         return losses
-    
+
     losses = optimize_for_neuron_whole_input(neuron_index=2, layer_num=5, num_tokens=20)
     # Plot losses
-    plt.figure(figsize=(10,6))
+    plt.figure(figsize=(10, 6))
     plt.plot(losses)
-    plt.title('Loss curve')
-    plt.xlabel('Iteration')
-    plt.ylabel('Loss')
+    plt.title("Loss curve")
+    plt.xlabel("Iteration")
+    plt.ylabel("Loss")
     plt.grid(True)
     plt.show()
+
+
+if __name__ == "__main__":
+    train_autoencoder_experiment()

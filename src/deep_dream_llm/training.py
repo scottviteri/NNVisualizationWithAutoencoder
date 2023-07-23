@@ -8,29 +8,14 @@ import torch
 from torch.optim import AdamW
 from tqdm import tqdm
 import matplotlib.pyplot as plt
-from torch.nn import MSELoss, Linear, TransformerEncoderLayer, LayerNorm, TransformerEncoder
-from torch.optim import Adam
-from torch.cuda.amp import autocast
-import copy
-#from tqdm import tqdm
 import openai
-import numpy as np
-import random
-from torch import nn
-import random
-from IPython.display import clear_output
-import transformers
-from transformers import AutoModel, AutoTokenizer, AutoModelForCausalLM
 from tqdm.auto import tqdm
-import weightwatcher as ww
-import code
 
-from .autoencoder import LinearAutoEncoder, Gpt2Autoencoder, Gpt2AutoencoderBoth
-from .utils import unembed_and_decode, get_sentence_similarity, gen_sentences, generate_sentence
+from utils import unembed_and_decode, get_sentence_similarity, gen_sentences, generate_sentence
 
 
 class DeepDreamLLMTrainer:
-    def __init__(self, hugging_face_model_name="distilgpt2", randomize_sentences=True, autoencoder_cls=LinearAutoEncoder):
+    def __init__(self, model, tokenizer, randomize_sentences=True, autoencoder=None, load_path=None, optimizer=None):
         """
         A class for training an autoencoder and for optimizing a sentence in the latent
         space of that autencoder in order to activate a neuron.
@@ -38,23 +23,24 @@ class DeepDreamLLMTrainer:
         Args:
             randomize_sentences: bool - whether or not to train with randomized sentences
         """
+        print("Please input your OpenAI API key in the terminal below:")
         openai.api_key = input()
         # Check if CUDA is available and choose device accordingly
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.device = device
-        self.tokenizer = AutoTokenizer.from_pretrained(hugging_face_model_name, use_fast=True)
-        self.model = AutoModelForCausalLM.from_pretrained(hugging_face_model_name).to(device)
+        self.model = model.to(device)
+        self.tokenizer = tokenizer
         if randomize_sentences:
             self.sentences = gen_sentences(self.model, self.tokenizer, device=device)
         self.randomize_sentences = randomize_sentences
 
-        autoencoder = autoencoder_cls('distilgpt2').to(self.device)
-        try:
-            autoencoder.load_state_dict(torch.load('transformer-autoencoder.pt'))
-        except:
-            print("No autencoder file found")
         self.autoencoder = autoencoder
-
+        # Load the model's parameters from a checkpoint if provided
+        if load_path is not None:
+            self.autoencoder.load_state_dict(torch.load(load_path))
+        self.autoencoder.to(device)
+        
+        self.optimizer = optimizer
 
     def calc_loss(self, sentence1, sentence2):
         self.tokenizer.pad_token = self.tokenizer.eos_token
@@ -67,33 +53,27 @@ class DeepDreamLLMTrainer:
         print("embeddings_shape:", embeddings_1.shape, embeddings_2.shape)
 
         if embeddings_1.shape != embeddings_2.shape:
-        print("warning, shapes are not equal in loss calc")
+            print("warning, shapes are not equal in loss calc")
         return torch.mean(torch.norm(embeddings_1 - embeddings_2, dim=2)).item()
 
 
-    def train_autoencoder(self, optimizer, num_epochs=1000, print_every=1, save_path="transformer-autoencoder.pt", load_path=None, use_openai=True):
+    def train_autoencoder(self, num_epochs=1000, print_every=1, save_path="transformer-autoencoder.pt", use_openai=True):
         loss_values = []
         similarity_values = []
         constructed_losses = []
-
-        # Load the model's parameters from a checkpoint if provided
-        if load_path is not None:
-            self.autoencoder.load_state_dict(torch.load(load_path))
 
         pbar = tqdm(range(num_epochs))
         # Training loop
         for epoch in pbar:
             # Generate a sentence with the pretrained model
-            if self.random_sentences:
+            if self.randomize_sentences:
                 input_sentence = generate_sentence(self.model, self.tokenizer, max_length=50)
             else:
                 input_sentence = self.sentences[0]
-            # Prepare the inputs for the self.autoencoder
-            # , max_length=self.model.config.n_ctx
-            input_ids = self.tokenizer.encode(input_sentence, return_tensors="pt").to(device)
+
+            input_ids = self.tokenizer.encode(input_sentence, return_tensors="pt").to(self.device)
             original_embeddings = self.model.transformer.wte(input_ids)
-            #print("orig:", original_embeddings.shape)
-            # Run the self.autoencoder and compute the loss
+
             #with autocast():
             reconstructed_embeddings = self.autoencoder(original_embeddings)
             loss = torch.mean(torch.norm(original_embeddings-reconstructed_embeddings, dim = 2))
@@ -101,15 +81,15 @@ class DeepDreamLLMTrainer:
             #code.interact(local=locals())
 
             loss.backward()
-            optimizer.step()
-            optimizer.zero_grad()
+            self.optimizer.step()
+            self.optimizer.zero_grad()
 
             # Record the loss value for plotting
             loss_values.append(loss.item())
 
             #print("reconstructed embs:", reconstructed_embeddings.shape)
             # Compute the sentence similarity between the original and reconstructed sentences
-            reconstructed_sentence = unembed_and_decode(reconstructed_embeddings)[0]
+            reconstructed_sentence = unembed_and_decode(model=self.model, tokenizer=self.tokenizer, embeds_input=reconstructed_embeddings)[0]
             # reconstructed_sentence has too many tokens?
             #print("recon:", len(reconstructed_sentence))
             # Print progress and save model every 'print_every' epochs
