@@ -11,6 +11,14 @@
             "program": "${file}",
             "console": "integratedTerminal",
             "justMyCode": true
+        },
+        {
+            "name": "Run experiment",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/deep_dream_llm/run_experiment.py",
+            "console": "integratedTerminal",
+            "justMyCode": true
         }
     ]
 }
