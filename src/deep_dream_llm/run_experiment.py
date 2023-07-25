@@ -3,6 +3,7 @@ A sample experiment runner.
 Each function is a self contained experiment.
 
 TODO: Move this file outside src and into an experiments folder
+TODO: Fix the whole thing where generated sentences include a ton of \n tokens.
 """
 
 import torch
@@ -12,17 +13,28 @@ import matplotlib.pyplot as plt
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import pandas as pd
 import tabulate
+import argparse
 
-from utils import unembed_and_decode
-from autoencoder import LinearAutoEncoder
+from utils import unembed_and_decode, update_plot
+from autoencoder import LinearAutoEncoder, Gpt2AutoencoderBoth
 from training import DeepDreamLLMTrainer
 
 
-def train_autoencoder_experiment(train_autoencoder=True):
+def train_autoencoder_experiment(args):
+    train_autoencoder = args.train_autoencoder
+    save_path = args.save_path
+    n_epochs = args.n_epochs
+    autoencoder_name = args.autoencoder_name
+
     # Initialize the tokenizer
     tokenizer = AutoTokenizer.from_pretrained("distilgpt2", use_fast=True)
     model = AutoModelForCausalLM.from_pretrained("distilgpt2")
-    autoencoder = LinearAutoEncoder("distilgpt2")
+    if "LinearAutoEncoder" == autoencoder_name:
+        autoencoder = LinearAutoEncoder("distilgpt2")
+    elif "Gpt2AutoencoderBoth" == autoencoder_name:
+        autoencoder = Gpt2AutoencoderBoth("distilgpt2")
+    else:
+        raise NotImplementedError(f"Autoencoder {autoencoder_name} not implemented")
     optimizer = torch.optim.AdamW(autoencoder.parameters(), lr=0.01)
 
     trainer = DeepDreamLLMTrainer(
@@ -36,9 +48,16 @@ def train_autoencoder_experiment(train_autoencoder=True):
     # tokenizer.pad_token = tokenizer.eos_token
     # TODO I think a smaller lr will do better
     if train_autoencoder:
-        trainer.train_autoencoder(
-            num_epochs=2, print_every=100, use_openai=False, save_path="test_1.pt"
+        (
+            losses,
+            openai_losses,
+            reencode_losses,
+            reconstructed_sentences,
+        ) = trainer.train_autoencoder(
+            num_epochs=n_epochs, print_every=100, use_openai=False, save_path=save_path
         )
+        update_plot(losses, openai_losses, reencode_losses)
+
     return trainer
 
 
@@ -246,8 +265,37 @@ def baseline_optimize_encoding_average():
 # # calc_average_emb_distance(10) #0.6956303872374302
 
 
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--train_autoencoder",
+        action="store_true",
+        help="Whether to train the autoencoder or not",
+    )
+    parser.add_argument(
+        "--save_path",
+        type=str,
+        default="test_1.pt",
+        help="Path to save the autoencoder to",
+    )
+    parser.add_argument(
+        "--n_epochs",
+        type=int,
+        default=2,
+        help="Number of epochs to train the autoencoder for",
+    )
+    parser.add_argument(
+        "--autoencoder_name",
+        type=str,
+        default="LinearAutoEncoder",
+        help="Name of the autoencoder to use",
+    )
+    return parser.parse_args()
+
+
 def main():
-    trainer = train_autoencoder_experiment(train_autoencoder=False)
+    args = parse_args()
+    trainer = train_autoencoder_experiment(args)
     optimize_encoding_average(trainer)
 
 
