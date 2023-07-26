@@ -1,3 +1,7 @@
 *__pycache__
 .vscode/settings.json
 forgotten_functions.py
+autoencoder.pt
+classifier.pt
+neuron_visualizations/*
+.ipynb_checkpoints/*
