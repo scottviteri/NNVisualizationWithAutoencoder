@@ -1,0 +1,70 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: Current File",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
+            "name": "Train Autoencoder Short Linear",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/deep_dream_llm/run_experiment.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--train_autoencoder",
+                "--save_path",
+                "test_1.pt"
+            ],
+            "justMyCode": true
+        },
+        {
+            "name": "Train Autoencoder Linear",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/deep_dream_llm/run_experiment.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--train_autoencoder",
+                "--save_path",
+                "test_1.pt",
+                "--n_epochs",
+                "1000"
+            ],
+            "justMyCode": true
+        },
+        {
+            "name": "Train Autoencoder GPT2",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/deep_dream_llm/run_experiment.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--train_autoencoder",
+                "--save_path",
+                "test_1.pt",
+                "--n_epochs",
+                "1000",
+                "--autoencoder_name",
+                "Gpt2AutoencoderBoth"
+            ],
+            "justMyCode": true
+        }
+        {
+            "name": "Optimize sentence",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/deep_dream_llm/run_experiment.py",
+            "console": "integratedTerminal",
+            "args": [],
+            "justMyCode": true
+        }
+    ]
+}

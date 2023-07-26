@@ -1,0 +1,10 @@
+torch
+transformers
+tqdm
+matplotlib
+datasets
+openai
+weightwatcher
+black
+tabulate
+accelerate
