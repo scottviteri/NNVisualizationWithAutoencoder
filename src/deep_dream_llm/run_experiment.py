@@ -15,9 +15,9 @@ import pandas as pd
 import tabulate
 import argparse
 
-from utils import unembed_and_decode, update_plot
-from autoencoder import LinearAutoEncoder, Gpt2AutoencoderBoth
-from training import DeepDreamLLMTrainer
+from deep_dream_llm.utils import unembed_and_decode, update_plot
+from deep_dream_llm.autoencoder import LinearAutoEncoder, Gpt2AutoencoderBoth
+from deep_dream_llm.training import DeepDreamLLMTrainer
 
 
 def train_autoencoder_experiment(args):
