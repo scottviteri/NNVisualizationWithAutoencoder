@@ -16,7 +16,7 @@ import numpy as np
 from matplotlib.animation import FuncAnimation
 from sklearn.metrics.pairwise import cosine_similarity
 
-from utils import (
+from deep_dream_llm.utils import (
     unembed_and_decode,
     get_sentence_similarity,
     generate_sentence,
