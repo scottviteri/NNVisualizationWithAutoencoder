@@ -131,21 +131,18 @@ def gen_sentences(model, tokenizer, n=10, sentence_length=50):
 
 def update_plot(losses, openai_losses, reencode_losses):
     fig, ax1 = plt.subplots(figsize=(10, 6))
-
     ax1.set_xlabel("Training Step")
     ax1.set_ylabel("Loss", color="b")
     ax1.plot(losses, color="b")
-
     ax1.tick_params("y", colors="r")
     ax1.set_ylabel("Reencode Loss", color="r", labelpad=15)
-    ax1.plot(range(0, len(losses), PRINT_EVERY), reencode_losses, color="r")
+    ax1.plot([PRINT_EVERY*i for i in range(len(reencode_losses))], reencode_losses, color="r")
     ax1.set_ylim(bottom=0)
-
-    ax2 = ax1.twinx()
-    ax2.set_ylabel("OpenAI Loss", color="g")
-    ax2.plot(range(0, len(losses), PRINT_EVERY), openai_losses, color="g")
-    ax2.set_ylim(-1, 1)
-
+    if openai_losses:
+        ax2 = ax1.twinx()
+        ax2.set_ylabel("OpenAI Loss", color="g")
+        ax2.plot([PRINT_EVERY*i for i in range(len(openai_losses))], openai_losses, color="g")
+        ax2.set_ylim(-1, 1)
     fig.tight_layout()
     plt.show()
 
