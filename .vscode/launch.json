@@ -153,7 +153,11 @@
                 "--autoencoder_name",
                 "TAE",
                 "--optimize_n_sentences",
-                "20"
+                "20",
+                "--layer_num",
+                "5",
+                "--neuron_index",
+                "10"
             ],
             "justMyCode": true
         },

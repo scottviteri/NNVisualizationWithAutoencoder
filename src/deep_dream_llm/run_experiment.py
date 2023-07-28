@@ -30,15 +30,17 @@ def train_autoencoder_experiment(args):
     if autoencoder_path == "":
         autoencoder_path = None
 
+    base_model_name = args.base_model_name
+
     # Initialize the tokenizer
-    tokenizer = AutoTokenizer.from_pretrained("distilgpt2", use_fast=True)
-    model = AutoModelForCausalLM.from_pretrained("distilgpt2")
+    tokenizer = AutoTokenizer.from_pretrained(base_model_name, use_fast=True)
+    model = AutoModelForCausalLM.from_pretrained(base_model_name)
     if "LinearAutoEncoder" == autoencoder_name:
-        autoencoder = LinearAutoEncoder("distilgpt2")
+        autoencoder = LinearAutoEncoder(base_model_name)
     elif "Gpt2AutoencoderBoth" == autoencoder_name:
-        autoencoder = Gpt2AutoencoderBoth("distilgpt2")
+        autoencoder = Gpt2AutoencoderBoth(base_model_name)
     elif "TAE" == autoencoder_name:
-        autoencoder = TAE("distilgpt2")
+        autoencoder = TAE(base_model_name)
     elif "mock" == autoencoder_name:
         autoencoder = MockAutoencoder()
     else:
@@ -361,6 +363,12 @@ def parse_args():
         default=20,
         help="Number of tokens to optimize for in a sentence",
     )
+    parser.add_argument(
+        "--base_model_name",
+        type=str,
+        default="distilgpt2",
+        help="Name of the base model to use",
+    )
     return parser.parse_args()
 
 
@@ -376,10 +384,10 @@ def main():
         og_reconstructed_sentences.append(log_out["original_sentence_reconstructed"])
         reconstructed_sentences.append(log_out["final_sentence"])
     # make this into a table and print the table
-    df = pd.DataFrame.from_dict({"og_sentences": og_sentences, "og_reconstructed_sentences": og_reconstructed_sentences, "reconstructed_sentences": reconstructed_sentences})
+    df = pd.DataFrame.from_dict({"og_sentences": og_sentences, "og_reconstructed_sentences": og_reconstructed_sentences, "final_sentences": reconstructed_sentences})
     table = tabulate.tabulate(df, headers="keys", tablefmt="psql")
     print(table)
-    with open(f"{args.autoencoder_name}-epochs-{args.n_epochs}-lr-{args.autoencoder_lr}-table.txt", "w", encoding="utf-8") as file:
+    with open(f"{args.autoencoder_name}-layer-{args.layer_num}-neuron_index-{args.neuron_index}-table.txt", "w", encoding="utf-8") as file:
         file.write(table)
 
 
