@@ -14,6 +14,7 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 import pandas as pd
 import tabulate
 import argparse
+import os
 
 from utils import unembed_and_decode, update_plot
 from autoencoder import LinearAutoEncoder, Gpt2AutoencoderBoth, TAE, MockAutoencoder
@@ -387,7 +388,12 @@ def main():
     df = pd.DataFrame.from_dict({"og_sentences": og_sentences, "og_reconstructed_sentences": og_reconstructed_sentences, "final_sentences": reconstructed_sentences})
     table = tabulate.tabulate(df, headers="keys", tablefmt="psql")
     print(table)
-    with open(f"{args.autoencoder_name}-layer-{args.layer_num}-neuron_index-{args.neuron_index}-table.txt", "w", encoding="utf-8") as file:
+    filename = f"{args.autoencoder_name}-layer-{args.layer_num}-neuron_index-{args.neuron_index}-table"
+    # check if filename exists
+    if os.path.exists(filename):
+        filename += "-1"
+    filename += ".txt"
+    with open(filename, "w", encoding="utf-8") as file:
         file.write(table)
 
 
