@@ -21,6 +21,40 @@ from torch import nn
 from transformers import AutoModel, AutoTokenizer, AutoModelForCausalLM
 
 
+class AutoEncoder(torch.nn.Module):
+    def __init__(self, encoder, decoder, name="autoencoder"):
+        """
+        Abstract auto-encoder class. The encoder and the decodor should each be
+        a torch.nn.Module that takes in embeddings and outputs embeddings.
+        """
+        super().__init__()
+        self.encoder = encoder
+        self.decoder = decoder
+        self.name = name
+
+        assert self.encoder.latent_dim == self.decoder.latent_dim, (
+            f"Encoder and decoder latent dimensions don't match. "
+            f"Got {self.encoder.latent_dim} and {self.decoder.latent_dim}"
+        )
+
+    def forward(self, inputs_embeds):
+        """
+        Takes as input embeddings and returns embeddings.
+        Args:
+            Inputs_embeds (tensor): shape [batch_size, sequence_length, embedding_size]
+        """
+        latent = self.encoder(inputs_embeds)
+        assert latent.shape[1] == self.encoder.latent_dim, (
+            f"Latent dimension of encoder is {self.encoder.latent_dim} but "
+            f"latent shape after self.encoder(inputs_embeds) is {latent.shape}"
+        )
+        decoded = self.decoder(latent)
+        assert decoded.shape == inputs_embeds.shape, (
+            f"Input shape {inputs_embeds.shape} and output shape {decoded.shape} "
+            f"don't match."
+        )
+        return decoded
+
 class mock_transformer(torch.nn.Module):
     def __init__(self):
         """
@@ -94,9 +128,9 @@ class TAE(torch.nn.Module):
             decoder_layer, num_layers=num_layers
         )  # logits?
 
-    def forward(self, input_embeds, attention_mask=None):
+    def forward(self, inputs_embeds, attention_mask=None):
         # Encode the input
-        latent = self.encoder(input_embeds)
+        latent = self.encoder(inputs_embeds)
         # Project the latent representation to the original embedding dimension
         p1 = self.projection_1(latent)
         p2 = self.projection_2(p1)
@@ -146,11 +180,9 @@ class Gpt2Encoder(torch.nn.Module):
         super().__init__()
         self.base_model = AutoModelForCausalLM.from_pretrained(model_checkpoint)
         self.base_model.lm_head = Linear(self.base_model.config.n_embd, latent_dim)
+        self.latent_dim = latent_dim
 
     def forward(self, inputs_embeds):
-        """
-        Inputs_embeds - shape [batch_size, sequence_length, embedding_size]
-        """
         latent = self.base_model(inputs_embeds=inputs_embeds).logits
         return latent
 
@@ -163,6 +195,7 @@ class Gpt2DecoderToEmbedding(torch.nn.Module):
             self.base_model.config.n_embd, self.base_model.config.n_embd
         )
         self.projection = Linear(latent_dim, self.base_model.config.n_embd)
+        self.latent_dim = latent_dim
 
     def forward(self, latent):
         """
@@ -179,6 +212,7 @@ class Gpt2DecoderToVocab(torch.nn.Module):
         super().__init__()
         self.base_model = AutoModelForCausalLM.from_pretrained(model_checkpoint)
         self.projection = Linear(latent_dim, self.base_model.config.n_embd)
+        self.latent_dim = latent_dim
 
     def forward(self, latent):
         """
@@ -194,6 +228,7 @@ class Gpt2AutoencoderBoth(torch.nn.Module):
     def __init__(self, model_checkpoint, latent_dim=100):
         """
         Implements GPt2Autoencoder with both encoder and decoder
+        TODO Delete this as it's decremented
         """
         super().__init__()
         self.encoder = Gpt2Encoder(model_checkpoint, latent_dim=latent_dim)
