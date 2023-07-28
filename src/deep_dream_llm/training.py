@@ -11,14 +11,11 @@ import matplotlib.pyplot as plt
 import openai
 from tqdm.auto import tqdm
 from accelerate import Accelerator
-import random
 import numpy as np
-from matplotlib.animation import FuncAnimation
 from sklearn.metrics.pairwise import cosine_similarity
 
-from deep_dream_llm.utils import (
+from utils import (
     unembed_and_decode,
-    get_sentence_similarity,
     generate_sentence,
     generate_sentence_batched,
     update_plot,
