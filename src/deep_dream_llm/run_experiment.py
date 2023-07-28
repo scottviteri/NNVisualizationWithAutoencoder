@@ -95,9 +95,13 @@ def optimize_encoding_average(trainer: DeepDreamLLMTrainer):
         num_tokens=20,
         num_iterations=100,
     )
-
+    
     # display in a table the sentences in log_dict using tabulate
-    df = pd.DataFrame.from_dict(log_dict)
+    df = pd.DataFrame.from_dict({"reconstructed_sentences": log_dict["reconstructed_sentences"], "activations": log_dict["activations"]})
+    print("Original sentence: ")
+    print(log_dict["original_sentence"])
+    print("Reconstructed sentence: ")
+    print(log_dict["original_sentence_reconstructed"])
     print(tabulate.tabulate(df, headers="keys", tablefmt="psql"))
 
     # Generate x-axis values

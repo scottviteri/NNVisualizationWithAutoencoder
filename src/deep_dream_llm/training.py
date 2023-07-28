@@ -169,7 +169,7 @@ class DeepDreamLLMTrainer:
                     model=self.model,
                     tokenizer=self.tokenizer,
                     embeds_input=reconstructed_embeddings,
-                )[0]
+                )
                 reconstructed_sentences.append(reconstructed_sentence)
 
                 reencode_loss = self.calc_reencode_loss(
@@ -228,13 +228,12 @@ class DeepDreamLLMTrainer:
             learning_rate (float): the learning rate to use for the optimizer
             seed (int): the seed to use for reproducibility
         Returns:
-            a tuple of losses, log_dict
-            losses - the list of losses of the modell
-            log_dict:
-                'original_sentence' - the original generated sentence
-                'original_sentence_reconstructed' - the original sentence after reconstructing it
-                'reconstructed_sentences' - a list of the reconstructed sentence as it chanegs throughout training
-                'activations' - a list of the average activations of the neuron as it changes throughout training
+            losses (list): the list of losses of the model
+            log_dict (dict): has keys below
+                original_sentence (str): the original generated sentence
+                original_sentence_reconstructed (str) : the original sentence after reconstructing it
+                reconstructed_sentences (list): Reconstructed sentences during training every 1/30th of the way through
+                activations (list): Average activations of the neuron every 1/30th of the way through
         """
         log_dict = {}
 
@@ -256,7 +255,7 @@ class DeepDreamLLMTrainer:
         with torch.no_grad():
             og_reconstructed_sentence = unembed_and_decode(
                 self.model, self.tokenizer, self.autoencoder.decode(latent_vectors)
-            )[0]
+            )
             log_dict["original_sentence_reconstructed"] = og_reconstructed_sentence
         # Create an optimizer for the latent vectors
         optimizer = AdamW(
@@ -295,7 +294,7 @@ class DeepDreamLLMTrainer:
                 tqdm.write(f"Loss at step {i}: {loss.item()}\n", end="")
                 reconstructed_sentence = unembed_and_decode(
                     self.model, self.tokenizer, embeddings
-                )[0]
+                )
                 tqdm.write(reconstructed_sentence, end="")
                 log_dict["reconstructed_sentences"].append(reconstructed_sentence)
                 log_dict["activations"].append(activation_saved[0].item())
@@ -332,7 +331,7 @@ class DeepDreamLLMTrainer:
         # 3
         # reconstructed_sentence = unembed_and_decode(
         #     self.model, self.tokenizer, reconstructed_embeddings
-        # )[0]
+        # )
         # input_ids_2 = self.encode_sentence(
         #     reconstructed_sentence
         # )
