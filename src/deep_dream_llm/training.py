@@ -66,13 +66,13 @@ class DeepDreamLLMTrainer:
 
         self.tokenizer = tokenizer
         self.tokenizer.pad_token = tokenizer.eos_token
+        self.num_sentences = num_sentences
 
         self.sentences = generate_sentence_batched(
             self.model, self.tokenizer, n=self.num_sentences
         )
         self.print_every = print_every
         self.is_notebook = is_notebook
-        self.num_sentences = num_sentences
 
     def get_embeddings(self, input_ids):
         return self.model.transformer.wte(input_ids)
@@ -184,6 +184,7 @@ class DeepDreamLLMTrainer:
                     loss.item(),
                     openai_loss,
                     reencode_loss,
+                    num_epochs
                 )
                 if save_path:
                     torch.save(self.autoencoder.state_dict(), save_path)
