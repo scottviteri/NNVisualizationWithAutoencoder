@@ -56,7 +56,41 @@
                 "Gpt2AutoencoderBoth"
             ],
             "justMyCode": true
-        }
+        },
+        {
+            "name": "Train Autoencoder GPT2 (Short)",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/deep_dream_llm/run_experiment.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--train_autoencoder",
+                "--save_path",
+                "test_1.pt",
+                "--n_epochs",
+                "2",
+                "--autoencoder_name",
+                "Gpt2AutoencoderBoth"
+            ],
+            "justMyCode": true
+        },
+        {
+            "name": "Train Autoencoder TAE (Short)",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/deep_dream_llm/run_experiment.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--train_autoencoder",
+                "--save_path",
+                "test_1.pt",
+                "--n_epochs",
+                "2",
+                "--autoencoder_name",
+                "TAE"
+            ],
+            "justMyCode": true
+        },
         {
             "name": "Optimize sentence",
             "type": "python",

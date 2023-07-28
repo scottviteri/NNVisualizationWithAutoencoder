@@ -7,3 +7,4 @@ neuron_visualizations/*
 .ipynb_checkpoints/*
 
 *.egg-info
+build

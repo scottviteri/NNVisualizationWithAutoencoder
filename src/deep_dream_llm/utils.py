@@ -42,7 +42,11 @@ def unembed_and_decode(model, tokenizer, embeds_input):
         model - the model to use
         tokenizer - the tokenizer to use
         embeds_input - the embeddings to decode
+    
+    Returns:
+        text - the decoded text, which may contain more or less tokens than before
     """
+    # original_shape = embeds_input.shape
     with torch.no_grad():
         with autocast():
             # Get the pre-trained embeddings
@@ -56,9 +60,14 @@ def unembed_and_decode(model, tokenizer, embeds_input):
             # Get the index of the highest value along dimension 2 (tokens)
             _, tokens = torch.max(dot_product, dim=2)
     # Decode tokens into text using the tokenizer
-    text = tokenizer.batch_decode(
-        tokens.tolist(), max_length=model.config.n_ctx, padding="max_length"
-    )
+    text = tokenizer.batch_decode(tokens.tolist())[0]
+    # # Encode the text again to verify number of tokens is the same
+    # encoded = tokenizer(text, return_tensors="pt", add_special_tokens=False)
+    # # Verify that the number of tokens is the same
+    # assert encoded.input_ids.shape[:2] == original_shape[:2], (
+    #     f"Number of tokens is not the same after decoding. "
+    #     f"Expected {original_shape[:2]} but got {encoded.input_ids.shape[:2]}"
+    # )
     return text
 
 

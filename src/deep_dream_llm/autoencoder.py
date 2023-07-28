@@ -65,11 +65,36 @@ class mock_gpt2(torch.nn.Module):
             input_embeds = self.transformer(inputs_ids)
         return self.lm_head(input_embeds)
 
+class MockAutoencoder(torch.nn.Module):
+    def __init__(self, latent_dim=100):
+        """
+        Mock autoencoder model for testing.
+        """
+        super().__init__()
+        self.encoder = Linear(768, latent_dim)
+        self.decoder = Linear(latent_dim, 768)
+        self.latent_dim = latent_dim
+    
+    def encode(self, input_embeds):
+        return self.encoder(input_embeds)
+
+    def decode(self, latent):
+        return self.decoder(latent)
+
+    def forward(self, inputs_embeds):
+        """
+        Args:
+            input_embeds: torch.tensor of shape (batch_size, sequence_length, embedding_size)
+        Returns:
+            torch.tensor of shape (batch_size, sequence_length, embedding_size)
+        """
+        latent = self.encode(inputs_embeds)
+        return self.decode(latent)
+
 
 class TAE(torch.nn.Module):
     def __init__(self, model_checkpoint, latent_dim=100, nhead=2, num_layers=2):
         """
-        TODO: Make model.encoder and model.decoder do everything
         TODO: Test this
         """
         super().__init__()
@@ -94,14 +119,21 @@ class TAE(torch.nn.Module):
             decoder_layer, num_layers=num_layers
         )  # logits?
 
+        self.latent_dim = latent_dim
+
+    def encode(self, input_embeds):
+        encoded_embeddings = self.encoder(input_embeds)
+        latent = self.projection_1(encoded_embeddings)
+        return latent
+    
+    def decode(self, latent):
+        p2 = self.projection_2(latent)
+        return self.decoder(p2)
+
     def forward(self, input_embeds, attention_mask=None):
         # Encode the input
-        latent = self.encoder(input_embeds)
-        # Project the latent representation to the original embedding dimension
-        p1 = self.projection_1(latent)
-        p2 = self.projection_2(p1)
-        # Decode the projected representation
-        reconstructed_embeddings = self.decoder(p2)
+        latent = self.encode(input_embeds)
+        reconstructed_embeddings = self.decode(latent)
         return reconstructed_embeddings
 
 
@@ -125,6 +157,11 @@ class Gpt2Autoencoder(torch.nn.Module):
         self.decoder = nn.TransformerEncoder(
             encoder_layer, num_layers=num_layers
         )  # logits?
+
+    def encode(self, input_embeds):
+        return self.encoder(input_embeds).logits
+    
+
 
     def forward(self, input_embeds, attention_mask=None):
         # Encode the input
@@ -216,10 +253,16 @@ class LinearAutoEncoder(torch.nn.Module):
         # Create the encoder
         self.encoder = Linear(base_model.config.n_embd, latent_dim)
         self.decoder = Linear(latent_dim, base_model.config.n_embd)
+    
+    def encode(self, input_embeds):
+        return self.encoder(input_embeds)
+
+    def decode(self, latent):
+        return self.decoder(latent)
 
     def forward(self, inputs_embeds, attention_mask=None):
         # Encode the input
-        latent = self.encoder(inputs_embeds)
+        latent = self.encode(inputs_embeds)
         # Decode the projected representation
-        reconstructed_embeddings = self.decoder(latent)
+        reconstructed_embeddings = self.decode(latent)
         return reconstructed_embeddings

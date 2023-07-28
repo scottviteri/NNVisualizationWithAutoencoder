@@ -12,6 +12,7 @@ import openai
 from tqdm.auto import tqdm
 from accelerate import Accelerator
 import numpy as np
+import random
 from sklearn.metrics.pairwise import cosine_similarity
 
 from utils import (
@@ -71,16 +72,21 @@ class DeepDreamLLMTrainer:
         self.print_every = print_every
         self.is_notebook = is_notebook
 
+        print("Testing autoencoder shapes")
+        self.test_autoencoder_shapes()
+        print("Autoencoder shapes test passed")
+
     def get_embeddings(self, input_ids):
         return self.model.transformer.wte(input_ids)
 
     def encode_sentence(self, sentence):
+        assert isinstance(sentence, str), "sentence must be a string"
         return self.tokenizer.encode(
             sentence,
             return_tensors="pt",
-            padding="max_length",
-            max_length=1024,
-            truncation=True,
+            # padding="max_length",
+            # max_length=1024,
+            # truncation=True,
         ).to(self.device)
 
     # 3 kinds of loss: loss, openai_distance, and reencode_loss
@@ -111,6 +117,11 @@ class DeepDreamLLMTrainer:
         embeddings_1, embeddings_2 = self.get_embeddings(
             input_ids_1
         ), self.get_embeddings(input_ids_2)
+        # truncate the longer embedding to be the size of the shorter one
+        if embeddings_1.shape[1] > embeddings_2.shape[1]:
+            embeddings_1 = embeddings_1[:, : embeddings_2.shape[1], :]
+        elif embeddings_2.shape[1] > embeddings_1.shape[1]:
+            embeddings_2 = embeddings_2[:, : embeddings_1.shape[1], :]
         return self.calc_loss(embeddings_1, embeddings_2).item()
 
     def train_autoencoder(
@@ -133,7 +144,9 @@ class DeepDreamLLMTrainer:
                 self.sentences = generate_sentence_batched(
                     self.model, self.tokenizer, n=self.num_sentences
                 )
-            input_sentence = np.random.choice(self.sentences, replace=False)
+            input_sentence_idx = random.randrange(len(self.sentences))
+            input_sentence = self.sentences[input_sentence_idx]
+            del self.sentences[input_sentence_idx]
 
             input_ids = self.tokenizer.encode(input_sentence, return_tensors="pt").to(
                 self.device
@@ -221,6 +234,7 @@ class DeepDreamLLMTrainer:
                 'original_sentence' - the original generated sentence
                 'original_sentence_reconstructed' - the original sentence after reconstructing it
                 'reconstructed_sentences' - a list of the reconstructed sentence as it chanegs throughout training
+                'activations' - a list of the average activations of the neuron as it changes throughout training
         """
         log_dict = {}
 
@@ -232,16 +246,16 @@ class DeepDreamLLMTrainer:
         print(sentence)
         log_dict["original_sentence"] = sentence
 
-        input_ids = self.tokenizer.encode(sentence, return_tensors="pt").to(self.device)
-        original_embeddings = self.model.transformer.wte(input_ids)
-        latent = self.autoencoder.encoder(original_embeddings)
+        input_ids = self.encode_sentence(sentence)
+        original_embeddings = self.get_embeddings(input_ids)
+        latent = self.autoencoder.encode(original_embeddings)
         latent_vectors = latent.detach().clone().to(self.device)
         latent_vectors.requires_grad = True
 
         print("original reconstructed sentence is ")
         with torch.no_grad():
             og_reconstructed_sentence = unembed_and_decode(
-                self.model, self.tokenizer, self.autoencoder.decoder(latent_vectors)
+                self.model, self.tokenizer, self.autoencoder.decode(latent_vectors)
             )[0]
             log_dict["original_sentence_reconstructed"] = og_reconstructed_sentence
         # Create an optimizer for the latent vectors
@@ -265,10 +279,10 @@ class DeepDreamLLMTrainer:
 
         handle = layer.register_forward_hook(hook)
 
-        losses, log_dict["reconstructed_sentences"] = [], []
+        losses, log_dict["reconstructed_sentences"], log_dict["activations"] = [], [], []
         for i in tqdm(range(num_iterations), position=0, leave=True):
             # Construct input for the self.model using the embeddings directly
-            embeddings = self.autoencoder.decoder(latent_vectors)
+            embeddings = self.autoencoder.decode(latent_vectors)
             _ = self.model(
                 inputs_embeds=embeddings
             )  # the hook means outputs are saved to activation_saved
@@ -284,29 +298,48 @@ class DeepDreamLLMTrainer:
                 )[0]
                 tqdm.write(reconstructed_sentence, end="")
                 log_dict["reconstructed_sentences"].append(reconstructed_sentence)
+                log_dict["activations"].append(activation_saved[0].item())
             optimizer.zero_grad()
 
         handle.remove()  # Don't forget to remove the hook!
         return losses, log_dict
 
-    def update_autoencoder_plot(self, losses, openai_losses, reencode_losses):
-        fig, ax1 = plt.subplots(figsize=(10, 6))
+    def test_autoencoder_shapes(self):
+        """
+        1. Checks that the latent vector shape is the same as latent_dim
+        2. Checks that the decoded shape is the same as the starting shape
 
-        ax1.set_xlabel("Training Step")
-        ax1.set_ylabel("Loss", color="b")
-        ax1.plot(losses, color="b")
+        3. Unembed and decode has different number of tokens potentially :(
+        """
 
-        ax1.tick_params("y", colors="r")
-        ax1.set_ylabel("Reencode Loss", color="r", labelpad=15)
-        ax1.plot([self.print_every*i for i in range(len(reencode_losses))],
-                reencode_losses, color="r")
-        ax1.set_ylim(bottom=0)
+        # 1
+        sentence = generate_sentence(
+            self.model, self.tokenizer, max_length=10
+        )
+        input_ids = self.encode_sentence(sentence)
+        original_embeddings = self.get_embeddings(input_ids)
+        latent = self.autoencoder.encode(original_embeddings)
+        assert latent.shape[2] == self.autoencoder.latent_dim, (
+            f"latent dim {latent.shape[2]} does not match autoencoder latent dim {self.autoencoder.latent_dim}"
+        )
 
-        ax2 = ax1.twinx()
-        ax2.set_ylabel("OpenAI Loss", color="g")
-        ax2.plot([self.print_every*i for i in range(len(openai_losses))],
-                  openai_losses, color="g")
-        ax2.set_ylim(-1, 1)
+        # 2
+        reconstructed_embeddings = self.autoencoder.decode(latent)
+        assert reconstructed_embeddings.shape == original_embeddings.shape, (
+            f"reconstructed_embeddings shape {reconstructed_embeddings.shape} does not match original_embeddings shape {original_embeddings.shape}"
+        )
 
-        fig.tight_layout()
-        plt.show()
+        # 3
+        # reconstructed_sentence = unembed_and_decode(
+        #     self.model, self.tokenizer, reconstructed_embeddings
+        # )[0]
+        # input_ids_2 = self.encode_sentence(
+        #     reconstructed_sentence
+        # )
+        # assert input_ids.shape[1] == input_ids_2.shape[1], (
+        #     f"input_ids shape {input_ids.shape} does not match input_ids_2 shape {input_ids_2.shape} after passing through unembed_and_decode" \
+        #     + f"original sentence: {sentence}" \
+        #     + f"reconstructed sentence: {reconstructed_sentence}"
+        # )
+        
+        return True

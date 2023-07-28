@@ -16,8 +16,27 @@ import tabulate
 import argparse
 
 from utils import unembed_and_decode, update_plot
-from autoencoder import LinearAutoEncoder, Gpt2AutoencoderBoth
+from autoencoder import LinearAutoEncoder, Gpt2AutoencoderBoth, TAE, MockAutoencoder
 from training import DeepDreamLLMTrainer
+
+
+def shape_test_autoencoder(autoencoder):
+    """
+    Args:
+
+    """
+    tokenizer = AutoTokenizer.from_pretrained("distilgpt2", use_fast=True)
+    model = AutoModelForCausalLM.from_pretrained("distilgpt2")
+    optimizer = torch.optim.AdamW(autoencoder.parameters(), lr=0.01)
+    # Generate a random sentence
+    trainer = DeepDreamLLMTrainer(
+        model=model,
+        tokenizer=tokenizer,
+        optimizer=optimizer,
+        autoencoder=autoencoder,
+        use_openai=False,
+    )
+    
 
 
 def train_autoencoder_experiment(args):
@@ -33,6 +52,10 @@ def train_autoencoder_experiment(args):
         autoencoder = LinearAutoEncoder("distilgpt2")
     elif "Gpt2AutoencoderBoth" == autoencoder_name:
         autoencoder = Gpt2AutoencoderBoth("distilgpt2")
+    elif "TAE" == autoencoder_name:
+        autoencoder = TAE("distilgpt2")
+    elif "mock" == autoencoder_name:
+        autoencoder = MockAutoencoder()
     else:
         raise NotImplementedError(f"Autoencoder {autoencoder_name} not implemented")
     optimizer = torch.optim.AdamW(autoencoder.parameters(), lr=0.01)
