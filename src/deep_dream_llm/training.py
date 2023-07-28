@@ -37,48 +37,39 @@ class DeepDreamLLMTrainer:
             config (TrainingConfig): a configuration object containing various training parameters.
 
         """
+        self.__dict__.update(vars(config))
 
-        self.config = config
-        if config.use_openai:
+        if self.use_openai:
             print("Please input your OpenAI API key in the terminal below:")
             openai.api_key = input()
-        self.use_openai = config.use_openai
-
+        
         # Load the model's parameters from a checkpoint if provided
-        self.autoencoder = config.autoencoder
         if self.autoencoder is None:
             # Default autoencoder
-            if config.autoencoder_name == "LinearAutoEncoder":
+            if self.autoencoder_name == "LinearAutoEncoder":
                 self.autoencoder = LinearAutoEncoder("distilgpt2")
-            elif config.autoencoder_name == "Gpt2AutoencoderBoth":
+            elif self.autoencoder_name == "Gpt2AutoencoderBoth":
                 self.autoencoder = Gpt2AutoencoderBoth("distilgpt2")
-            elif config.autoencoder_name == "TAE":
+            elif self.autoencoder_name == "TAE":
                 self.autoencoder = TAE("distilgpt2")
             else:
                 raise NotImplementedError(f"Autoencoder {config.autoencoder_name} not implemented")
 
         accelerator = Accelerator()  # TODO actually use this other than just preparing stuff
-        self.model = config.model if config.model is not None else AutoModelForCausalLM.from_pretrained("distilgpt2")
-        self.optimizer = config.optimizer if config.optimizer is not None else torch.optim.AdamW(self.autoencoder.parameters(), lr=0.01)
+        if self.model is None:
+            self.model = AutoModelForCausalLM.from_pretrained("distilgpt2")
+        if self.optimizer is None:
+            self.optimizer = torch.optim.AdamW(self.autoencoder.parameters(), lr=0.01)
         self.model, self.optimizer, self.autoencoder = accelerator.prepare(self.model, self.optimizer, self.autoencoder)
         self.device = accelerator.device
-        print("accelerator device: ", self.device)
-        self.lr_scheduler = config.lr_scheduler
-
-        self.tokenizer = config.tokenizer if config.tokenizer is not None else AutoTokenizer.from_pretrained("distilgpt2", use_fast=True)
+        
+        if self.tokenizer is None:
+            self.tokenizer = AutoTokenizer.from_pretrained("distilgpt2", use_fast=True)
         self.tokenizer.pad_token = self.tokenizer.eos_token
-        self.num_sentences = config.num_sentences
-
-        self.sentences = generate_sentence_batched(
-            self.model, self.tokenizer, n=self.num_sentences
-        )
-        self.print_every = config.print_every
-        self.is_notebook = config.is_notebook
-
+        
         print("Testing autoencoder shapes")
         self.test_autoencoder_shapes()
         print("Autoencoder shapes test passed")
-
 
     def get_embeddings(self, input_ids):
         return self.model.transformer.wte(input_ids)
@@ -128,23 +119,25 @@ class DeepDreamLLMTrainer:
             embeddings_2 = embeddings_2[:, : embeddings_1.shape[1], :]
         return self.calc_loss(embeddings_1, embeddings_2).item()
 
-    def train_autoencoder(self):
+    def train_autoencoder(self, num_epochs, print_every, save_path=None, num_sentences=None):
+        if save_path is None:
+            save_path = f"Checkpoints/{self.autoencoder_name}_{num_epochs}_{print_every}.pt" 
         losses, openai_losses, reencode_losses = [], [], []
-        reconstructed_sentences = []
-        if use_openai is None:
-            use_openai = self.use_openai
-
-        pbar = tqdm(range(self.n_epochs))
+        sentences, reconstructed_sentences = [], []
+        
+        pbar = tqdm(range(num_epochs))
         # Training loop
         for epoch in pbar:
-            if len(self.sentences) == 0:
+            if len(sentences) == 0:
                 print("Ran out of sentences, generating another batch")
-                self.sentences = generate_sentence_batched(
-                    self.model, self.tokenizer, n=self.num_sentences
+                nsent = num_sentences if num_sentences else num_epochs//4
+                sentences = generate_sentence_batched(
+                    self.model, self.tokenizer, n=nsent
                 )
-            input_sentence_idx = random.randrange(len(self.sentences))
-            input_sentence = self.sentences[input_sentence_idx]
-            del self.sentences[input_sentence_idx]
+            input_sentence_idx = random.randrange(len(sentences))
+            input_sentence = sentences[input_sentence_idx]
+            if num_sentences is None: 
+                del sentences[input_sentence_idx]
 
             input_ids = self.tokenizer.encode(input_sentence, return_tensors="pt").to(
                 self.device
@@ -161,7 +154,7 @@ class DeepDreamLLMTrainer:
 
             losses.append(loss.item())
 
-            if epoch % self.print_every == 0:
+            if epoch % print_every == 0:
               # Record the loss value for plotting
                 reconstructed_sentence = unembed_and_decode(
                     model=self.model,
@@ -175,7 +168,7 @@ class DeepDreamLLMTrainer:
                 )
                 reencode_losses.append(reencode_loss)
                 openai_loss = 0
-                if use_openai:
+                if self.use_openai:
                     openai_loss = self.calc_openai_loss(
                         input_sentence, reconstructed_sentence
                     )
@@ -192,9 +185,9 @@ class DeepDreamLLMTrainer:
                     loss.item(),
                     openai_loss,
                     reencode_loss,
-                    self.n_epochs
+                    num_epochs
                 )
-                if self.save_path: torch.save(self.autoencoder.state_dict(), self.save_path)
+                if save_path: torch.save(self.autoencoder.state_dict(), save_path)
         return losses, openai_losses, reencode_losses, reconstructed_sentences
 
     def neuron_loss_fn(activation):
