@@ -311,7 +311,7 @@ def parse_args():
     parser.add_argument(
         "--autoencoder_lr",
         type=float,
-        default=0.0001,
+        default=0.001,
         help="Learning rate for the autoencoder",
     )
     parser.add_argument(

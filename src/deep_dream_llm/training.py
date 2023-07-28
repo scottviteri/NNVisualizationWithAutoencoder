@@ -35,11 +35,14 @@ class DeepDreamLLMTrainer:
         print_every=150,
         lr_scheduler=None,
         is_notebook=False,
-        num_sentences=100
+        num_sentences=1000
     ):
         """
         A class for training an autoencoder and for optimizing a sentence in the latent
         space of that autencoder in order to activate a neuron.
+
+        Args:
+            num_sentences (int): the number of sentences to generate for the autoencoder at a time. Decrease this if running out of memory
 
         """
         if use_openai:
