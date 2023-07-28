@@ -40,7 +40,6 @@ def train_autoencoder_experiment(args):
     trainer = DeepDreamLLMTrainer(
         model=model,
         tokenizer=tokenizer,
-        randomize_sentences=True,
         optimizer=optimizer,
         autoencoder=autoencoder,
         use_openai=False,
