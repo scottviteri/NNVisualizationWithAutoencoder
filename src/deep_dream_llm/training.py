@@ -14,6 +14,10 @@ from accelerate import Accelerator
 import numpy as np
 import random
 from sklearn.metrics.pairwise import cosine_similarity
+from transformers import AutoTokenizer, AutoModelForCausalLM
+
+from config import TrainingConfig
+from autoencoder import TAE, LinearAutoEncoder, Gpt2AutoencoderBoth
 
 from utils import (
     unembed_and_decode,
@@ -24,60 +28,57 @@ from utils import (
 )
 
 class DeepDreamLLMTrainer:
-    def __init__(
-        self,
-        model,
-        tokenizer,
-        autoencoder=None,
-        load_path=None,
-        optimizer=None,
-        use_openai=True,
-        print_every=150,
-        lr_scheduler=None,
-        is_notebook=False,
-        num_sentences=1000
-    ):
+    def __init__(self, config: TrainingConfig):
         """
         A class for training an autoencoder and for optimizing a sentence in the latent
         space of that autencoder in order to activate a neuron.
 
         Args:
-            num_sentences (int): the number of sentences to generate for the autoencoder at a time. Decrease this if running out of memory
+            config (TrainingConfig): a configuration object containing various training parameters.
 
         """
-        if use_openai:
+
+        self.config = config
+        if config.use_openai:
             print("Please input your OpenAI API key in the terminal below:")
             openai.api_key = input()
-        self.use_openai = use_openai
+        self.use_openai = config.use_openai
 
         # Load the model's parameters from a checkpoint if provided
-        self.autoencoder = autoencoder
-        if load_path is not None:
-            self.autoencoder.load_state_dict(torch.load(load_path))
+        self.autoencoder = config.autoencoder
+        if self.autoencoder is None:
+            # Default autoencoder
+            if config.autoencoder_name == "LinearAutoEncoder":
+                self.autoencoder = LinearAutoEncoder("distilgpt2")
+            elif config.autoencoder_name == "Gpt2AutoencoderBoth":
+                self.autoencoder = Gpt2AutoencoderBoth("distilgpt2")
+            elif config.autoencoder_name == "TAE":
+                self.autoencoder = TAE("distilgpt2")
+            else:
+                raise NotImplementedError(f"Autoencoder {config.autoencoder_name} not implemented")
 
-        accelerator = (
-            Accelerator()
-        )  # TODO actually use this other than just preparing stuff
-        self.model, self.optimizer, self.autoencoder = accelerator.prepare(
-            model, optimizer, self.autoencoder
-        )
+        accelerator = Accelerator()  # TODO actually use this other than just preparing stuff
+        self.model = config.model if config.model is not None else AutoModelForCausalLM.from_pretrained("distilgpt2")
+        self.optimizer = config.optimizer if config.optimizer is not None else torch.optim.AdamW(self.autoencoder.parameters(), lr=0.01)
+        self.model, self.optimizer, self.autoencoder = accelerator.prepare(self.model, self.optimizer, self.autoencoder)
         self.device = accelerator.device
         print("accelerator device: ", self.device)
-        self.lr_scheduler = lr_scheduler
+        self.lr_scheduler = config.lr_scheduler
 
-        self.tokenizer = tokenizer
-        self.tokenizer.pad_token = tokenizer.eos_token
-        self.num_sentences = num_sentences
+        self.tokenizer = config.tokenizer if config.tokenizer is not None else AutoTokenizer.from_pretrained("distilgpt2", use_fast=True)
+        self.tokenizer.pad_token = self.tokenizer.eos_token
+        self.num_sentences = config.num_sentences
 
         self.sentences = generate_sentence_batched(
             self.model, self.tokenizer, n=self.num_sentences
         )
-        self.print_every = print_every
-        self.is_notebook = is_notebook
+        self.print_every = config.print_every
+        self.is_notebook = config.is_notebook
 
         print("Testing autoencoder shapes")
         self.test_autoencoder_shapes()
         print("Autoencoder shapes test passed")
+
 
     def get_embeddings(self, input_ids):
         return self.model.transformer.wte(input_ids)
@@ -127,19 +128,13 @@ class DeepDreamLLMTrainer:
             embeddings_2 = embeddings_2[:, : embeddings_1.shape[1], :]
         return self.calc_loss(embeddings_1, embeddings_2).item()
 
-    def train_autoencoder(
-        self,
-        save_path,
-        num_epochs=1000,
-        print_every=100,
-        use_openai=None,
-    ):
+    def train_autoencoder(self):
         losses, openai_losses, reencode_losses = [], [], []
         reconstructed_sentences = []
         if use_openai is None:
             use_openai = self.use_openai
 
-        pbar = tqdm(range(num_epochs))
+        pbar = tqdm(range(self.n_epochs))
         # Training loop
         for epoch in pbar:
             if len(self.sentences) == 0:
@@ -166,7 +161,7 @@ class DeepDreamLLMTrainer:
 
             losses.append(loss.item())
 
-            if epoch % print_every == 0:
+            if epoch % self.print_every == 0:
               # Record the loss value for plotting
                 reconstructed_sentence = unembed_and_decode(
                     model=self.model,
@@ -197,10 +192,9 @@ class DeepDreamLLMTrainer:
                     loss.item(),
                     openai_loss,
                     reencode_loss,
-                    num_epochs
+                    self.n_epochs
                 )
-                if save_path:
-                    torch.save(self.autoencoder.state_dict(), save_path)
+                if self.save_path: torch.save(self.autoencoder.state_dict(), self.save_path)
         return losses, openai_losses, reencode_losses, reconstructed_sentences
 
     def neuron_loss_fn(activation):
@@ -336,17 +330,5 @@ class DeepDreamLLMTrainer:
             f"reconstructed_embeddings shape {reconstructed_embeddings.shape} does not match original_embeddings shape {original_embeddings.shape}"
         )
 
-        # 3
-        # reconstructed_sentence = unembed_and_decode(
-        #     self.model, self.tokenizer, reconstructed_embeddings
-        # )
-        # input_ids_2 = self.encode_sentence(
-        #     reconstructed_sentence
-        # )
-        # assert input_ids.shape[1] == input_ids_2.shape[1], (
-        #     f"input_ids shape {input_ids.shape} does not match input_ids_2 shape {input_ids_2.shape} after passing through unembed_and_decode" \
-        #     + f"original sentence: {sentence}" \
-        #     + f"reconstructed sentence: {reconstructed_sentence}"
-        # )
         
         return True

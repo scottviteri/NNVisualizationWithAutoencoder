@@ -16,7 +16,6 @@ from sklearn.metrics.pairwise import cosine_similarity
 
 PRINT_EVERY = 150
 
-
 def get_sentence_similarity(sentence1, sentence2):
     # Get embeddings for both sentences
     response1 = openai.Embedding.create(input=sentence1, model="text-embedding-ada-002")
