@@ -219,6 +219,7 @@ class DeepDreamLLMTrainer:
         loss_fn=neuron_loss_fn,
         learning_rate=0.1,
         seed=42,
+        verbose=True
     ):
         """
         Args:
@@ -244,8 +245,8 @@ class DeepDreamLLMTrainer:
         sentence = generate_sentence(
             self.model, self.tokenizer, max_length=num_tokens, seed=seed
         )
-        print("Original sentence is:")
-        print(sentence)
+        if verbose: tqdm.write("Original sentence is:")
+        if verbose: tqdm.write(sentence)
         log_dict["original_sentence"] = sentence
 
         input_ids = self.encode_sentence(sentence)
@@ -254,7 +255,7 @@ class DeepDreamLLMTrainer:
         latent_vectors = latent.detach().clone().to(self.device)
         latent_vectors.requires_grad = True
 
-        print("original reconstructed sentence is ")
+        if verbose: tqdm.write("original reconstructed sentence is ")
         with torch.no_grad():
             og_reconstructed_sentence = unembed_and_decode(
                 self.model, self.tokenizer, self.autoencoder.decode(latent_vectors)
@@ -282,7 +283,11 @@ class DeepDreamLLMTrainer:
         handle = layer.register_forward_hook(hook)
 
         losses, log_dict["reconstructed_sentences"], log_dict["activations"] = [], [], []
-        for i in tqdm(range(num_iterations), position=0, leave=True):
+        if verbose:
+            pbar = tqdm(range(num_iterations), position=0, leave=True)
+        else:
+            pbar = range(num_iterations)
+        for i in pbar:
             # Construct input for the self.model using the embeddings directly
             embeddings = self.autoencoder.decode(latent_vectors)
             _ = self.model(
@@ -294,11 +299,11 @@ class DeepDreamLLMTrainer:
             optimizer.step()
             losses.append(loss.item())
             if i % (num_iterations // 30) == 0:
-                tqdm.write(f"Loss at step {i}: {loss.item()}\n", end="")
+                if verbose: tqdm.write(f"Loss at step {i}: {loss.item()}\n", end="")
                 reconstructed_sentence = unembed_and_decode(
                     self.model, self.tokenizer, embeddings
                 )
-                tqdm.write(reconstructed_sentence, end="")
+                if verbose: tqdm.write(reconstructed_sentence, end="")
                 log_dict["reconstructed_sentences"].append(reconstructed_sentence)
                 log_dict["activations"].append(activation_saved[0].item())
             optimizer.zero_grad()

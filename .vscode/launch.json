@@ -128,13 +128,34 @@
             "justMyCode": true
         },
         {
-            "name": "Optimize sentence",
+            "name": "Optimize one sentence",
             "type": "python",
             "request": "launch",
             "program": "${workspaceFolder}/src/deep_dream_llm/run_experiment.py",
             "console": "integratedTerminal",
-            "args": [],
+            "args": [
+                "--autoencoder_path",
+                "TAE_1.pt",
+                "--autoencoder_name",
+                "TAE",
+            ],
             "justMyCode": true
-        }
+        },
+        {
+            "name": "Optimize a lot of sentences",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/deep_dream_llm/run_experiment.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--autoencoder_path",
+                "TAE_1.pt",
+                "--autoencoder_name",
+                "TAE",
+                "--optimize_n_sentences",
+                "20"
+            ],
+            "justMyCode": true
+        },
     ]
 }

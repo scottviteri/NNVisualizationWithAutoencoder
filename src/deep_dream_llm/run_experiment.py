@@ -26,6 +26,9 @@ def train_autoencoder_experiment(args):
     n_epochs = args.n_epochs
     autoencoder_name = args.autoencoder_name
     lr_scheduler = args.lr_scheduler
+    autoencoder_path = args.autoencoder_path
+    if autoencoder_path == "":
+        autoencoder_path = None
 
     # Initialize the tokenizer
     tokenizer = AutoTokenizer.from_pretrained("distilgpt2", use_fast=True)
@@ -58,6 +61,7 @@ def train_autoencoder_experiment(args):
         autoencoder=autoencoder,
         use_openai=False,
         lr_scheduler=lr_scheduler,
+        load_path=autoencoder_path
     )
     # tokenizer.pad_token = tokenizer.eos_token
     # TODO I think a smaller lr will do better
@@ -75,40 +79,47 @@ def train_autoencoder_experiment(args):
     return trainer
 
 
-def optimize_encoding_average(trainer: DeepDreamLLMTrainer):
+def optimize_encoding_average(args, trainer: DeepDreamLLMTrainer, plot=True):
     """
     Loads a trained autoencoder and then optimizes the encoding for a random
     sentence in order to maximally activate a neuron in the model.
     """
+    seed = 42
+    if args.optimize_n_sentences > 1:
+        seed = None
 
     losses, log_dict = trainer.optimize_for_neuron_whole_input(
-        neuron_index=2,
-        layer_num=5,
-        num_tokens=20,
+        neuron_index=args.neuron_index,
+        layer_num=args.layer_num,
+        num_tokens=args.num_tokens,
         num_iterations=100,
+        seed=seed,
+        verbose=False
     )
     
     # display in a table the sentences in log_dict using tabulate
     df = pd.DataFrame.from_dict({"reconstructed_sentences": log_dict["reconstructed_sentences"], "activations": log_dict["activations"]})
-    print("Original sentence: ")
-    print(log_dict["original_sentence"])
-    print("Reconstructed sentence: ")
-    print(log_dict["original_sentence_reconstructed"])
-    print(tabulate.tabulate(df, headers="keys", tablefmt="psql"))
+    if plot:
+        print("Original sentence: ")
+        print(log_dict["original_sentence"])
+        print("Reconstructed sentence: ")
+        print(log_dict["original_sentence_reconstructed"])
+        print(tabulate.tabulate(df, headers="keys", tablefmt="psql"))
 
-    # Generate x-axis values
-    loss_iterations = range(1, len(losses) + 1)
+        # Generate x-axis values
+        loss_iterations = range(1, len(losses) + 1)
 
-    # Plot the losses
-    plt.plot(loss_iterations, losses, "-o")
+        # Plot the losses
+        plt.plot(loss_iterations, losses, "-o")
 
-    # Set the plot title and labels
-    plt.title("Loss over Epochs")
-    plt.xlabel("Epochs")
-    plt.ylabel("Loss")
+        # Set the plot title and labels
+        plt.title("Loss over Epochs")
+        plt.xlabel("Epochs")
+        plt.ylabel("Loss")
 
-    # Show the plot
-    plt.show()
+        # Show the plot
+        plt.show()
+    return {"original_sentence": log_dict["original_sentence"], "original_sentence_reconstructed": log_dict["original_sentence_reconstructed"], "activations": log_dict["activations"], "final_sentence": log_dict["reconstructed_sentences"][-1]}
 
 
 def baseline_optimize_encoding():
@@ -320,13 +331,56 @@ def parse_args():
         default="",
         help="Learning rate lr_scheduler for the autoencoder",
     )
+    parser.add_argument(
+        "--autoencoder_path",
+        type=str,
+        default="",
+        help="Path to a pretrained autoencoder",
+    )
+    parser.add_argument(
+        "--optimize_n_sentences",
+        type=int,
+        default=1,
+        help="Whether to optimize many sentences or not",
+    )
+    parser.add_argument(
+        "--neuron_index",
+        type=int,
+        default=0,
+        help="Index of the neuron to optimize for",
+    )
+    parser.add_argument(
+        "--layer_num",
+        type=int,
+        default=1,
+        help="Index of the layer to optimize for",
+    )
+    parser.add_argument(
+        "--num_tokens",
+        type=int,
+        default=20,
+        help="Number of tokens to optimize for in a sentence",
+    )
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
     trainer = train_autoencoder_experiment(args)
-    optimize_encoding_average(trainer)
+    og_sentences = []
+    og_reconstructed_sentences = []
+    reconstructed_sentences = []
+    for _ in tqdm(range(args.optimize_n_sentences), desc="Num_sentences"):
+        log_out = optimize_encoding_average(args, trainer, plot=False)
+        og_sentences.append(log_out["original_sentence"])
+        og_reconstructed_sentences.append(log_out["original_sentence_reconstructed"])
+        reconstructed_sentences.append(log_out["final_sentence"])
+    # make this into a table and print the table
+    df = pd.DataFrame.from_dict({"og_sentences": og_sentences, "og_reconstructed_sentences": og_reconstructed_sentences, "reconstructed_sentences": reconstructed_sentences})
+    table = tabulate.tabulate(df, headers="keys", tablefmt="psql")
+    print(table)
+    with open(f"{args.autoencoder_name}-epochs-{args.n_epochs}-lr-{args.autoencoder_lr}-table.txt", "w", encoding="utf-8") as file:
+        file.write(table)
 
 
 if __name__ == "__main__":
