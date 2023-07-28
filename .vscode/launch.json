@@ -49,9 +49,11 @@
             "args": [
                 "--train_autoencoder",
                 "--save_path",
-                "test_1.pt",
+                "Linear_1.pt",
                 "--n_epochs",
-                "1000"
+                "3000",
+                "--autoencoder_lr",
+                "0.001"
             ],
             "justMyCode": true
         },
