@@ -26,6 +26,21 @@
             "justMyCode": true
         },
         {
+            "name": "Train Autoencoder Short Linear Scheduler",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/deep_dream_llm/run_experiment.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--train_autoencoder",
+                "--save_path",
+                "test_1.pt",
+                "--lr_scheduler",
+                "LinearWarmup"
+            ],
+            "justMyCode": true
+        },
+        {
             "name": "Train Autoencoder Linear",
             "type": "python",
             "request": "launch",
@@ -86,6 +101,23 @@
                 "test_1.pt",
                 "--n_epochs",
                 "2",
+                "--autoencoder_name",
+                "TAE"
+            ],
+            "justMyCode": true
+        },
+        {
+            "name": "Train Autoencoder TAE",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/deep_dream_llm/run_experiment.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--train_autoencoder",
+                "--save_path",
+                "TAE_1.pt",
+                "--n_epochs",
+                "1000",
                 "--autoencoder_name",
                 "TAE"
             ],

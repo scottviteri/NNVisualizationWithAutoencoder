@@ -18,32 +18,14 @@ import argparse
 from utils import unembed_and_decode, update_plot
 from autoencoder import LinearAutoEncoder, Gpt2AutoencoderBoth, TAE, MockAutoencoder
 from training import DeepDreamLLMTrainer
-
-
-def shape_test_autoencoder(autoencoder):
-    """
-    Args:
-
-    """
-    tokenizer = AutoTokenizer.from_pretrained("distilgpt2", use_fast=True)
-    model = AutoModelForCausalLM.from_pretrained("distilgpt2")
-    optimizer = torch.optim.AdamW(autoencoder.parameters(), lr=0.01)
-    # Generate a random sentence
-    trainer = DeepDreamLLMTrainer(
-        model=model,
-        tokenizer=tokenizer,
-        optimizer=optimizer,
-        autoencoder=autoencoder,
-        use_openai=False,
-    )
     
-
 
 def train_autoencoder_experiment(args):
     train_autoencoder = args.train_autoencoder
     save_path = args.save_path
     n_epochs = args.n_epochs
     autoencoder_name = args.autoencoder_name
+    lr_scheduler = args.lr_scheduler
 
     # Initialize the tokenizer
     tokenizer = AutoTokenizer.from_pretrained("distilgpt2", use_fast=True)
@@ -58,7 +40,16 @@ def train_autoencoder_experiment(args):
         autoencoder = MockAutoencoder()
     else:
         raise NotImplementedError(f"Autoencoder {autoencoder_name} not implemented")
-    optimizer = torch.optim.AdamW(autoencoder.parameters(), lr=0.01)
+    optimizer = torch.optim.AdamW(autoencoder.parameters(), lr=args.autoencoder_lr)
+    if lr_scheduler == "LinearWarmup":
+        """
+        This scales the lr coeff from 0 to 1 over the first 10% of the epochs,
+        and then scales it from 1 to 0 over the remaining 90% of the epochs.
+        """
+        lr_scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lambda epoch: 10 * epoch / n_epochs if epoch / n_epochs < 0.1 else 1 - epoch / n_epochs)
+    else:
+        print("Not using a lr_scheduler")
+        lr_scheduler = None
 
     trainer = DeepDreamLLMTrainer(
         model=model,
@@ -66,6 +57,7 @@ def train_autoencoder_experiment(args):
         optimizer=optimizer,
         autoencoder=autoencoder,
         use_openai=False,
+        lr_scheduler=lr_scheduler,
     )
     # tokenizer.pad_token = tokenizer.eos_token
     # TODO I think a smaller lr will do better
@@ -78,7 +70,7 @@ def train_autoencoder_experiment(args):
         ) = trainer.train_autoencoder(
             num_epochs=n_epochs, print_every=100, use_openai=False, save_path=save_path
         )
-        update_plot(losses, openai_losses, reencode_losses)
+        update_plot(losses, openai_losses, reencode_losses, save_path=f"{autoencoder_name}-{n_epochs}-epochs-lr-{args.autoencoder_lr}.png")
 
     return trainer
 
@@ -315,6 +307,18 @@ def parse_args():
         type=str,
         default="LinearAutoEncoder",
         help="Name of the autoencoder to use",
+    )
+    parser.add_argument(
+        "--autoencoder_lr",
+        type=float,
+        default=0.0001,
+        help="Learning rate for the autoencoder",
+    )
+    parser.add_argument(
+        "--lr_scheduler",
+        type=str,
+        default="",
+        help="Learning rate lr_scheduler for the autoencoder",
     )
     return parser.parse_args()
 
