@@ -134,10 +134,11 @@ def update_plot(losses, openai_losses, reencode_losses):
     ax1.set_xlabel("Training Step")
     ax1.set_ylabel("Loss", color="b")
     ax1.plot(losses, color="b")
-    ax1.tick_params("y", colors="r")
-    ax1.set_ylabel("Reencode Loss", color="r", labelpad=15)
-    ax1.plot([PRINT_EVERY*i for i in range(len(reencode_losses))], reencode_losses, color="r")
-    ax1.set_ylim(bottom=0)
+    if reencode_losses:
+        ax1.tick_params("y", colors="r")
+        ax1.set_ylabel("Reencode Loss", color="r", labelpad=15)
+        ax1.plot([PRINT_EVERY*i for i in range(len(reencode_losses))], reencode_losses, color="r")
+        ax1.set_ylim(bottom=0)
     if openai_losses:
         ax2 = ax1.twinx()
         ax2.set_ylabel("OpenAI Loss", color="g")
@@ -154,12 +155,13 @@ def print_results(
     loss,
     openai_loss,
     reencode_loss,
-    total_epochs=100000,
+    total_epochs,
 ):
     print(f"Epoch {epoch}/{total_epochs}, Loss: {round(loss, 4)}")
     print(
-        f"Openai Loss: {round(openai_loss, 4)}, Reencode Loss: {round(reencode_loss, 4)}"
+        f"Openai Loss: {round(openai_loss, 4)}"
     )
+    print(f"hi")
     print(f"Original: {textwrap.fill(original_sentence, width=80)}")
     print(f"Reconstructed: {textwrap.fill(reconstructed_sentence[:100], width=80)}")
     print(

@@ -3,9 +3,11 @@ A file for tests to ensure code works as expect
 
 TODO This file is a Work in progress
 """
-
 import pytest
-from utils import calc_loss
+from autoencoder import *
+from run_experiment import *
+from training import *
+from utils import *
 
 @pytest.mark.skip(reason="Not implemented")
 def test_calc_loss():

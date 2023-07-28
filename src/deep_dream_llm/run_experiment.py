@@ -15,9 +15,9 @@ import pandas as pd
 import tabulate
 import argparse
 
-from deep_dream_llm.utils import unembed_and_decode, update_plot
-from deep_dream_llm.autoencoder import LinearAutoEncoder, Gpt2AutoencoderBoth
-from deep_dream_llm.training import DeepDreamLLMTrainer
+from utils import unembed_and_decode, update_plot
+from autoencoder import LinearAutoEncoder, Gpt2AutoencoderBoth
+from training import DeepDreamLLMTrainer
 
 
 def train_autoencoder_experiment(args):
@@ -40,7 +40,6 @@ def train_autoencoder_experiment(args):
     trainer = DeepDreamLLMTrainer(
         model=model,
         tokenizer=tokenizer,
-        randomize_sentences=True,
         optimizer=optimizer,
         autoencoder=autoencoder,
         use_openai=False,

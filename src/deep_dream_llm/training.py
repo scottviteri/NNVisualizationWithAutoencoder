@@ -11,29 +11,22 @@ import matplotlib.pyplot as plt
 import openai
 from tqdm.auto import tqdm
 from accelerate import Accelerator
-import random
 import numpy as np
-from matplotlib.animation import FuncAnimation
 from sklearn.metrics.pairwise import cosine_similarity
 
 from utils import (
     unembed_and_decode,
-    get_sentence_similarity,
     generate_sentence,
     generate_sentence_batched,
     update_plot,
     print_results,
 )
 
-NUM_SENTENCES = 1000
-
-
 class DeepDreamLLMTrainer:
     def __init__(
         self,
         model,
         tokenizer,
-        randomize_sentences=True,
         autoencoder=None,
         load_path=None,
         optimizer=None,
@@ -41,13 +34,12 @@ class DeepDreamLLMTrainer:
         print_every=150,
         lr_scheduler=None,
         is_notebook=False,
+        num_sentences=100
     ):
         """
         A class for training an autoencoder and for optimizing a sentence in the latent
         space of that autencoder in order to activate a neuron.
 
-        Args:
-            randomize_sentences: bool - whether or not to train with randomized sentences
         """
         if use_openai:
             print("Please input your OpenAI API key in the terminal below:")
@@ -68,25 +60,16 @@ class DeepDreamLLMTrainer:
         self.device = accelerator.device
         print("accelerator device: ", self.device)
         self.lr_scheduler = lr_scheduler
-        # # Check if CUDA is available and choose device accordingly
-        # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        # self.device = device
-        # self.model = model.to(device) # device placement handled by accelerate
+
         self.tokenizer = tokenizer
         self.tokenizer.pad_token = tokenizer.eos_token
+        self.num_sentences = num_sentences
 
         self.sentences = generate_sentence_batched(
-            self.model, self.tokenizer, n=NUM_SENTENCES
+            self.model, self.tokenizer, n=self.num_sentences
         )
-        self.randomize_sentences = randomize_sentences
         self.print_every = print_every
         self.is_notebook = is_notebook
-
-    # def sample_sentences(self, all_sentences, num_sentences):
-    #     if NUM_SENTENCES:
-    #         return random.sample(all_sentences, num_sentences)
-    #     else:
-    #         return random.shuffle(all_sentences)
 
     def get_embeddings(self, input_ids):
         return self.model.transformer.wte(input_ids)
@@ -132,9 +115,9 @@ class DeepDreamLLMTrainer:
 
     def train_autoencoder(
         self,
+        save_path,
         num_epochs=1000,
-        print_every=1,
-        save_path="transformer-autoencoder.pt",
+        print_every=100,
         use_openai=None,
     ):
         losses, openai_losses, reencode_losses = [], [], []
@@ -142,22 +125,13 @@ class DeepDreamLLMTrainer:
         if use_openai is None:
             use_openai = self.use_openai
 
-        # if not self.randomize_sentences:
-        #     sentences = self.sample_sentences(self.sentences, NUM_SENTENCES)
-
         pbar = tqdm(range(num_epochs))
         # Training loop
         for epoch in pbar:
-            # Generate a sentence with the pretrained model
-            # if self.randomize_sentences:
-            #     input_sentence = generate_sentence(
-            #         self.model, self.tokenizer, max_length=50
-            #     )
-            # else:
             if len(self.sentences) == 0:
                 print("Ran out of sentences, generating another batch")
                 self.sentences = generate_sentence_batched(
-                    self.model, self.tokenizer, n=NUM_SENTENCES
+                    self.model, self.tokenizer, n=self.num_sentences
                 )
             input_sentence = np.random.choice(self.sentences, replace=False)
 
@@ -174,10 +148,10 @@ class DeepDreamLLMTrainer:
                 self.lr_scheduler.step()
             self.optimizer.zero_grad()
 
-            # Record the loss value for plotting
             losses.append(loss.item())
 
             if epoch % print_every == 0:
+              # Record the loss value for plotting
                 reconstructed_sentence = unembed_and_decode(
                     model=self.model,
                     tokenizer=self.tokenizer,
@@ -207,12 +181,10 @@ class DeepDreamLLMTrainer:
                     loss.item(),
                     openai_loss,
                     reencode_loss,
+                    num_epochs
                 )
                 if save_path:
                     torch.save(self.autoencoder.state_dict(), save_path)
-            # Randomize sentences
-            # if RANDOMIZE_EVERY and epoch % RANDOMIZE_EVERY == 0:
-            #     sentences = sample_sentences(ALL_SENTENCES, NUM_SENTENCES) if NUM_SENTENCES else ALL_SENTENCES
         return losses, openai_losses, reencode_losses, reconstructed_sentences
 
     def neuron_loss_fn(activation):
@@ -326,12 +298,14 @@ class DeepDreamLLMTrainer:
 
         ax1.tick_params("y", colors="r")
         ax1.set_ylabel("Reencode Loss", color="r", labelpad=15)
-        ax1.plot(range(0, len(losses), self.print_every), reencode_losses, color="r")
+        ax1.plot([self.print_every*i for i in range(len(reencode_losses))],
+                reencode_losses, color="r")
         ax1.set_ylim(bottom=0)
 
         ax2 = ax1.twinx()
         ax2.set_ylabel("OpenAI Loss", color="g")
-        ax2.plot(range(0, len(losses), self.print_every), openai_losses, color="g")
+        ax2.plot([self.print_every*i for i in range(len(openai_losses))],
+                  openai_losses, color="g")
         ax2.set_ylim(-1, 1)
 
         fig.tight_layout()
