@@ -173,7 +173,7 @@ def print_results(
     )
     print(f"Reencode Loss: {round(reencode_loss, 4)}")
     print(f"Original: {textwrap.fill(original_sentence, width=80)}")
-    print(f"Reconstructed: {textwrap.fill(reconstructed_sentence[:100], width=80)}")
+    print(f"Reconstructed: {textwrap.fill(reconstructed_sentence, width=80)}")
     print(
         f"Lengths: Orig = {len(original_sentence)}, Recon = {len(reconstructed_sentence)}"
     )
