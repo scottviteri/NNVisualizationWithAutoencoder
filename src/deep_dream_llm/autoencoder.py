@@ -112,28 +112,28 @@ class TAE(torch.nn.Module):
         self.projection_1 = Linear(base_model.config.n_embd, latent_dim)
         self.projection_2 = Linear(latent_dim, base_model.config.n_embd)
 
-        decoder_layer = nn.TransformerEncoderLayer(
+        decoder_layer = nn.TransformerDecoderLayer(
             d_model=base_model.config.n_embd, nhead=nhead
         )
-        self.decoder = nn.TransformerEncoder(
+        self.decoder = nn.TransformerDecoder(
             decoder_layer, num_layers=num_layers
         )  # logits?
 
         self.latent_dim = latent_dim
 
-    def encode(self, input_embeds):
-        encoded_embeddings = self.encoder(input_embeds)
+    def encode(self, input_embeds, attention_mask):
+        encoded_embeddings = self.encoder(input_embeds, src_key_padding_mask=attention_mask)
         latent = self.projection_1(encoded_embeddings)
         return latent
     
-    def decode(self, latent):
+    def decode(self, latent, attention_mask):
         p2 = self.projection_2(latent)
-        return self.decoder(p2)
+        return self.decoder(p2, p2, tgt_key_padding_mask=attention_mask)
 
     def forward(self, input_embeds, attention_mask=None):
         # Encode the input
-        latent = self.encode(input_embeds)
-        reconstructed_embeddings = self.decode(latent)
+        latent = self.encode(input_embeds, attention_mask)
+        reconstructed_embeddings = self.decode(latent, attention_mask)
         return reconstructed_embeddings
 
 

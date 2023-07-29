@@ -11,6 +11,7 @@ class TrainingConfig:
     autoencoder: Optional[object] = None
     optimizer: Optional[Optimizer] = None
     use_openai: bool = False
+    batch_size: int = 10
     latent_dim: float = 100
     learning_rate: float = 0.001
     lr_scheduler: Optional[object] = None
