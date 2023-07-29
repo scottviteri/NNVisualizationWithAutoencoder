@@ -128,9 +128,7 @@ class DeepDreamLLMTrainer:
         if save_path is None:
             save_path = f"/content/NNVisualizationWithAutoencoder/Checkpoints/{self.autoencoder_name}_{num_epochs}_{print_every}.pt"
         losses, openai_losses, reencode_losses = [], [], []
-
-        # Initialize numpy array for sentences
-        sentences = np.array([])
+        sentences, reconstructed_sentences = np.array([]), []
 
         pbar = tqdm(range(num_epochs))
         # Training loop
@@ -168,41 +166,43 @@ class DeepDreamLLMTrainer:
             losses.append(loss.item())
             if epoch % print_every == 0:
                 print("loss: ", loss)
+                if save_path: torch.save(self.autoencoder.state_dict(), save_path)
 
-            # if epoch % print_every == 0:
-            #   # Record the loss value for plotting
-            #     reconstructed_sentence = unembed_and_decode(
-            #         model=self.model,
-            #         tokenizer=self.tokenizer,
-            #         embeds_input=reconstructed_embeddings,
-            #     )
-            #     reconstructed_sentences.append(reconstructed_sentence)
+            if epoch % print_every == 0:
+              # Record the loss value for plotting
+                reconstructed_sentences = unembed_and_decode(
+                    model=self.model,
+                    tokenizer=self.tokenizer,
+                    embeds_input=reconstructed_embeddings[0],
+                )
+                input_sentence = input_sentences[0]
+                reconstructed_sentence = reconstructed_sentences[0]
+                reconstructed_sentences.append(reconstructed_sentence)
 
-            #     reencode_loss = self.calc_reencode_loss(
-            #         input_sentence, reconstructed_sentence
-            #     )
-            #     reencode_losses.append(reencode_loss)
-            #     openai_loss = 0
-            #     if self.use_openai:
-            #         openai_loss = self.calc_openai_loss(
-            #             input_sentence, reconstructed_sentence
-            #         )
-            #         openai_losses.append(openai_loss)
-            #     if self.is_notebook:
-            #         from IPython.display import clear_output
-
-            #         clear_output(wait=True)
-            #         update_plot(losses, openai_losses, reencode_losses, print_every)
-            #     print_results(
-            #         epoch,
-            #         input_sentence,
-            #         reconstructed_sentence,
-            #         loss.item(),
-            #         openai_loss,
-            #         reencode_loss,
-            #         num_epochs
-            #     )
-            #     if save_path: torch.save(self.autoencoder.state_dict(), save_path)
+                reencode_loss = self.calc_reencode_loss(
+                    input_sentences[0], reconstructed_sentence
+                )
+                reencode_losses.append(reencode_loss)
+                openai_loss = 0
+                if self.use_openai:
+                    openai_loss = self.calc_openai_loss(
+                        input_sentence, reconstructed_sentence
+                    )
+                    openai_losses.append(openai_loss)
+                if self.is_notebook:
+                    from IPython.display import clear_output
+                    clear_output(wait=True)
+                    update_plot(losses, openai_losses, reencode_losses, print_every)
+                print_results(
+                    epoch,
+                    input_sentence,
+                    reconstructed_sentence,
+                    loss.item(),
+                    openai_loss,
+                    reencode_loss,
+                    num_epochs
+                )
+                if save_path: torch.save(self.autoencoder.state_dict(), save_path)
         return losses, openai_losses, reencode_losses, sentences, reconstructed_sentences
 
     def neuron_loss_fn(activation):
