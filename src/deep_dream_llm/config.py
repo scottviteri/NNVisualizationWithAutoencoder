@@ -10,7 +10,8 @@ class TrainingConfig:
     model: AutoModelForCausalLM = None
     autoencoder: Optional[object] = None
     optimizer: Optional[Optimizer] = None
-    use_openai: bool = True
+    use_openai: bool = False
+    latent_dim: float = 100
     learning_rate: float = 0.001
     lr_scheduler: Optional[object] = None
     is_notebook: bool = True

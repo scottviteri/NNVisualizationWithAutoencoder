@@ -52,11 +52,11 @@ class DeepDreamLLMTrainer:
                 full_name = self.autoencoder_name
                 self.autoencoder_name = self.autoencoder_name.split('_')[0]
             if self.autoencoder_name == "LinearAutoEncoder":
-                self.autoencoder = LinearAutoEncoder("distilgpt2")
+                self.autoencoder = LinearAutoEncoder("distilgpt2", latent_dim=self.latent_dim)
             elif self.autoencoder_name == "Gpt2AutoencoderBoth":
-                self.autoencoder = Gpt2AutoencoderBoth("distilgpt2")
+                self.autoencoder = Gpt2AutoencoderBoth("distilgpt2", latent_dim=self.latent_dim)
             elif self.autoencoder_name == "TAE":
-                self.autoencoder = TAE("distilgpt2")
+                self.autoencoder = TAE("distilgpt2", latent_dim=self.latent_dim)
             else:
                 raise NotImplementedError(f"Autoencoder {config.autoencoder_name} not implemented")
             if full_name:
