@@ -112,10 +112,10 @@ class TAE(torch.nn.Module):
         self.projection_1 = Linear(base_model.config.n_embd, latent_dim)
         self.projection_2 = Linear(latent_dim, base_model.config.n_embd)
 
-        decoder_layer = nn.TransformerDecoderLayer(
+        decoder_layer = nn.TransformerEncoderLayer(
             d_model=base_model.config.n_embd, nhead=nhead
         )
-        self.decoder = nn.TransformerDecoder(
+        self.decoder = nn.TransformerEncoder(
             decoder_layer, num_layers=num_layers
         )  # logits?
 
@@ -128,7 +128,7 @@ class TAE(torch.nn.Module):
 
     def decode(self, latent, attention_mask):
         p2 = self.projection_2(latent)
-        return self.decoder(p2, p2, tgt_key_padding_mask=attention_mask)
+        return self.decoder(p2, src_key_padding_mask=attention_mask)
 
     def forward(self, input_embeds, attention_mask=None):
         # Encode the input

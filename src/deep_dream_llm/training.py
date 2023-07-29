@@ -166,12 +166,12 @@ class DeepDreamLLMTrainer:
             losses.append(loss.item())
 
             if epoch % print_every == 0:
-              # Record the loss value for plotting
+                # Record the loss value for plotting
                 reconstructed_sentence = unembed_and_decode(
                     model=self.model,
                     tokenizer=self.tokenizer,
-                    embeds_input=reconstructed_embeddings[0],
-                )
+                    embeds_input=reconstructed_embeddings,
+                )[0]
                 input_sentence = input_sentences[0]
                 reconstructed_sentences.append(reconstructed_sentence)
 

@@ -53,11 +53,10 @@ def unembed_and_decode(model, tokenizer, embeds_input):
             #   print(f"types don't match, got for embeds inputs { embeds_input.dtype}, and {pretrained_embeddings.dtype} for embeddings matrix from gpt2 model")
             # Calculate dot product between input embeddings and pre-trained embeddings
             dot_product = torch.matmul(embeds_input, pretrained_embeddings.t())
-
             # Get the index of the highest value along dimension 2 (tokens)
             _, tokens = torch.max(dot_product, dim=-1)
     # Decode tokens into text using the tokenizer
-    text = tokenizer.batch_decode(tokens.tolist())[0]
+    text = tokenizer.batch_decode(tokens.tolist())
     # # Encode the text again to verify number of tokens is the same
     # encoded = tokenizer(text, return_tensors="pt", add_special_tokens=False)
     # # Verify that the number of tokens is the same
