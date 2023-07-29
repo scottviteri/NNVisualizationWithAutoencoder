@@ -46,6 +46,11 @@ class DeepDreamLLMTrainer:
         # Load the model's parameters from a checkpoint if provided
         if self.autoencoder is None:
             # Default autoencoder
+            full_name = None
+            model_names = ['LinearAutoEncoder', 'Gpt2AutoencoderBoth', 'TAE']
+            if self.autoencoder_name not in model_names:
+                full_name = self.autoencoder_name
+                self.autoencoder_name = self.autoencoder_name.split('_')[0]
             if self.autoencoder_name == "LinearAutoEncoder":
                 self.autoencoder = LinearAutoEncoder("distilgpt2")
             elif self.autoencoder_name == "Gpt2AutoencoderBoth":
@@ -54,12 +59,15 @@ class DeepDreamLLMTrainer:
                 self.autoencoder = TAE("distilgpt2")
             else:
                 raise NotImplementedError(f"Autoencoder {config.autoencoder_name} not implemented")
+            if full_name:
+                loaded = torch.load("/content/NNVisualizationWithAutoencoder/Checkpoints/"+full_name)
+                self.autoencoder.load_state_dict(loaded)
 
         accelerator = Accelerator()  # TODO actually use this other than just preparing stuff
         if self.model is None:
             self.model = AutoModelForCausalLM.from_pretrained("distilgpt2")
         if self.optimizer is None:
-            self.optimizer = torch.optim.AdamW(self.autoencoder.parameters(), lr=0.01)
+            self.optimizer = torch.optim.AdamW(self.autoencoder.parameters(), lr=self.learning_rate)
         self.model, self.optimizer, self.autoencoder = accelerator.prepare(self.model, self.optimizer, self.autoencoder)
         self.device = accelerator.device
         
@@ -121,7 +129,7 @@ class DeepDreamLLMTrainer:
 
     def train_autoencoder(self, num_epochs, print_every, save_path=None, num_sentences=None):
         if save_path is None:
-            save_path = f"Checkpoints/{self.autoencoder_name}_{num_epochs}_{print_every}.pt" 
+            save_path = f"/content/NNVisualizationWithAutoencoder/Checkpoints/{self.autoencoder_name}_{num_epochs}_{print_every}.pt" 
         losses, openai_losses, reencode_losses = [], [], []
         sentences, reconstructed_sentences = [], []
         
@@ -130,7 +138,7 @@ class DeepDreamLLMTrainer:
         for epoch in pbar:
             if len(sentences) == 0:
                 print("Ran out of sentences, generating another batch")
-                nsent = num_sentences if num_sentences else num_epochs//4
+                nsent = num_sentences if num_sentences else 500
                 sentences = generate_sentence_batched(
                     self.model, self.tokenizer, n=nsent
                 )
@@ -138,6 +146,7 @@ class DeepDreamLLMTrainer:
             input_sentence = sentences[input_sentence_idx]
             if num_sentences is None: 
                 del sentences[input_sentence_idx]
+            sentences.append(input_sentence)
 
             input_ids = self.tokenizer.encode(input_sentence, return_tensors="pt").to(
                 self.device
@@ -177,7 +186,7 @@ class DeepDreamLLMTrainer:
                     from IPython.display import clear_output
 
                     clear_output(wait=True)
-                    update_plot(losses, openai_losses, reencode_losses)
+                    update_plot(losses, openai_losses, reencode_losses, print_every)
                 print_results(
                     epoch,
                     input_sentence,
@@ -188,7 +197,7 @@ class DeepDreamLLMTrainer:
                     num_epochs
                 )
                 if save_path: torch.save(self.autoencoder.state_dict(), save_path)
-        return losses, openai_losses, reencode_losses, reconstructed_sentences
+        return losses, openai_losses, reencode_losses, sentences, reconstructed_sentences
 
     def neuron_loss_fn(activation):
         """

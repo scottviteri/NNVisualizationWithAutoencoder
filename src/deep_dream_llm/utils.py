@@ -14,8 +14,6 @@ import matplotlib.pyplot as plt
 from torch.cuda.amp import autocast
 from sklearn.metrics.pairwise import cosine_similarity
 
-PRINT_EVERY = 150
-
 def get_sentence_similarity(sentence1, sentence2):
     # Get embeddings for both sentences
     response1 = openai.Embedding.create(input=sentence1, model="text-embedding-ada-002")
@@ -137,20 +135,21 @@ def gen_sentences(model, tokenizer, n=10, sentence_length=50):
     return sentences
 
 
-def update_plot(losses, openai_losses, reencode_losses, save_path=None):
+def update_plot(losses, openai_losses, reencode_losses, print_every, save_path=None):
     fig, ax1 = plt.subplots(figsize=(10, 6))
     ax1.set_xlabel("Training Step")
     ax1.set_ylabel("Loss", color="b")
-    ax1.plot(losses, color="b")
+    xs = [i*print_every for i in range(len(losses)//print_every)]
+    ax1.plot(xs, [losses[x] for x in xs], color="b")
     if reencode_losses:
         ax1.tick_params("y", colors="r")
         ax1.set_ylabel("Reencode Loss", color="r", labelpad=15)
-        ax1.plot([PRINT_EVERY*i for i in range(len(reencode_losses))], reencode_losses, color="r")
+        ax1.plot([print_every*i for i in range(len(reencode_losses))], reencode_losses, color="r")
         ax1.set_ylim(bottom=0)
     if openai_losses:
         ax2 = ax1.twinx()
         ax2.set_ylabel("OpenAI Loss", color="g")
-        ax2.plot([PRINT_EVERY*i for i in range(len(openai_losses))], openai_losses, color="g")
+        ax2.plot([print_every*i for i in range(len(openai_losses))], openai_losses, color="g")
         ax2.set_ylim(-1, 1)
     fig.tight_layout()
     if save_path is not None:

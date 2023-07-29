@@ -11,7 +11,8 @@ class TrainingConfig:
     autoencoder: Optional[object] = None
     optimizer: Optional[Optimizer] = None
     use_openai: bool = False
+    learning_rate: float = 0.001
     lr_scheduler: Optional[object] = None
     is_notebook: bool = True
     num_sentences: int = 1000
-    save_path = None
+    save_path: str = None
