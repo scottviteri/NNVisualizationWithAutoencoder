@@ -74,7 +74,7 @@ class MockAutoencoder(torch.nn.Module):
         self.encoder = Linear(768, latent_dim)
         self.decoder = Linear(latent_dim, 768)
         self.latent_dim = latent_dim
-    
+
     def encode(self, input_embeds):
         return self.encoder(input_embeds)
 
@@ -125,7 +125,7 @@ class TAE(torch.nn.Module):
         encoded_embeddings = self.encoder(input_embeds, src_key_padding_mask=attention_mask)
         latent = self.projection_1(encoded_embeddings)
         return latent
-    
+
     def decode(self, latent, attention_mask):
         p2 = self.projection_2(latent)
         return self.decoder(p2, p2, tgt_key_padding_mask=attention_mask)
@@ -160,7 +160,7 @@ class Gpt2Autoencoder(torch.nn.Module):
 
     def encode(self, input_embeds):
         return self.encoder(input_embeds).logits
-    
+
 
 
     def forward(self, input_embeds, attention_mask=None):
@@ -253,7 +253,7 @@ class LinearAutoEncoder(torch.nn.Module):
         # Create the encoder
         self.encoder = Linear(base_model.config.n_embd, latent_dim)
         self.decoder = Linear(latent_dim, base_model.config.n_embd)
-    
+
     def encode(self, input_embeds):
         return self.encoder(input_embeds)
 

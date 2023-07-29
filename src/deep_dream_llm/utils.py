@@ -39,7 +39,7 @@ def unembed_and_decode(model, tokenizer, embeds_input):
         model - the model to use
         tokenizer - the tokenizer to use
         embeds_input - the embeddings to decode
-    
+
     Returns:
         text - the decoded text, which may contain more or less tokens than before
     """
@@ -55,7 +55,7 @@ def unembed_and_decode(model, tokenizer, embeds_input):
             dot_product = torch.matmul(embeds_input, pretrained_embeddings.t())
 
             # Get the index of the highest value along dimension 2 (tokens)
-            _, tokens = torch.max(dot_product, dim=2)
+            _, tokens = torch.max(dot_product, dim=-1)
     # Decode tokens into text using the tokenizer
     text = tokenizer.batch_decode(tokens.tolist())[0]
     # # Encode the text again to verify number of tokens is the same
@@ -175,4 +175,3 @@ def print_results(
     print(f"Lengths: Orig = {len(original_sentence)}")
     print(f"Recon = {len(reconstructed_sentence)}")
     print(f"Ratio = {loss/len(original_sentence)}")
-    

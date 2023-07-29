@@ -42,7 +42,7 @@ class DeepDreamLLMTrainer:
         if self.use_openai:
             print("Please input your OpenAI API key in the terminal below:")
             openai.api_key = input()
-        
+
         # Load the model's parameters from a checkpoint if provided
         if self.autoencoder is None:
             # Default autoencoder
@@ -70,11 +70,11 @@ class DeepDreamLLMTrainer:
             self.optimizer = torch.optim.AdamW(self.autoencoder.parameters(), lr=self.learning_rate)
         self.model, self.optimizer, self.autoencoder = accelerator.prepare(self.model, self.optimizer, self.autoencoder)
         self.device = accelerator.device
-        
+
         if self.tokenizer is None:
             self.tokenizer = AutoTokenizer.from_pretrained("distilgpt2", use_fast=True)
         self.tokenizer.pad_token = self.tokenizer.eos_token
-        
+
         #print("Testing autoencoder shapes")
         #self.test_autoencoder_shapes()
         #print("Autoencoder shapes test passed")
@@ -156,7 +156,7 @@ class DeepDreamLLMTrainer:
             original_embeddings = self.get_embeddings(input_ids)
             reconstructed_embeddings = self.autoencoder(original_embeddings, attention_mask.T==0)
             loss = self.calc_loss(original_embeddings, reconstructed_embeddings).sum()
-            
+
             loss.backward()
             self.optimizer.step()
             if self.lr_scheduler is not None:
@@ -164,19 +164,15 @@ class DeepDreamLLMTrainer:
             self.optimizer.zero_grad()
 
             losses.append(loss.item())
-            if epoch % print_every == 0:
-                print("loss: ", loss)
-                if save_path: torch.save(self.autoencoder.state_dict(), save_path)
 
             if epoch % print_every == 0:
               # Record the loss value for plotting
-                reconstructed_sentences = unembed_and_decode(
+                reconstructed_sentence = unembed_and_decode(
                     model=self.model,
                     tokenizer=self.tokenizer,
                     embeds_input=reconstructed_embeddings[0],
                 )
                 input_sentence = input_sentences[0]
-                reconstructed_sentence = reconstructed_sentences[0]
                 reconstructed_sentences.append(reconstructed_sentence)
 
                 reencode_loss = self.calc_reencode_loss(
@@ -338,5 +334,5 @@ class DeepDreamLLMTrainer:
             f"reconstructed_embeddings shape {reconstructed_embeddings.shape} does not match original_embeddings shape {original_embeddings.shape}"
         )
 
-        
+
         return True
