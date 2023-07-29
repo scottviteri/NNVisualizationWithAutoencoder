@@ -139,7 +139,7 @@ def update_plot(losses, openai_losses, reencode_losses, print_every, save_path=N
     fig, ax1 = plt.subplots(figsize=(10, 6))
     ax1.set_xlabel("Training Step")
     ax1.set_ylabel("Loss", color="b")
-    xs = [i*print_every for i in range(len(losses)//print_every)]
+    xs = [i*print_every for i in range(len(reencode_losses))]
     ax1.plot(xs, [losses[x] for x in xs], color="b")
     if reencode_losses:
         ax1.tick_params("y", colors="r")
@@ -168,12 +168,11 @@ def print_results(
     total_epochs,
 ):
     print(f"Epoch {epoch}/{total_epochs}, Loss: {round(loss, 4)}")
-    print(
-        f"Openai Loss: {round(openai_loss, 4)}"
-    )
+    print(f"Openai Loss: {round(openai_loss, 4)}")
     print(f"Reencode Loss: {round(reencode_loss, 4)}")
     print(f"Original: {textwrap.fill(original_sentence, width=80)}")
     print(f"Reconstructed: {textwrap.fill(reconstructed_sentence, width=80)}")
-    print(
-        f"Lengths: Orig = {len(original_sentence)}, Recon = {len(reconstructed_sentence)}"
-    )
+    print(f"Lengths: Orig = {len(original_sentence)}")
+    print(f"Recon = {len(reconstructed_sentence)}")
+    print(f"Ratio = {loss/len(original_sentence)}")
+    

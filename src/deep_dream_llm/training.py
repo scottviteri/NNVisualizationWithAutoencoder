@@ -87,9 +87,6 @@ class DeepDreamLLMTrainer:
         return self.tokenizer.encode(
             sentence,
             return_tensors="pt",
-            # padding="max_length",
-            # max_length=1024,
-            # truncation=True,
         ).to(self.device)
 
     # 3 kinds of loss: loss, openai_distance, and reencode_loss
