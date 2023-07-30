@@ -135,6 +135,14 @@ def gen_sentences(model, tokenizer, n=10, sentence_length=50):
 
 
 def update_plot(losses, openai_losses, reencode_losses, print_every, save_path=None):
+    """
+    Args:
+        losses - a list of losses
+        openai_losses - a list of openai losses
+        reencode_losses - a list of reencode losses
+        print_every - how often to print the losses
+        save_path - where to save the plot    
+    """
     fig, ax1 = plt.subplots(figsize=(10, 6))
     ax1.set_xlabel("Training Step")
     ax1.set_ylabel("Loss", color="b")

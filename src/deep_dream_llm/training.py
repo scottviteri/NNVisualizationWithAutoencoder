@@ -13,6 +13,7 @@ from tqdm.auto import tqdm
 from accelerate import Accelerator
 import numpy as np
 import random
+import os
 from sklearn.metrics.pairwise import cosine_similarity
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
@@ -60,7 +61,9 @@ class DeepDreamLLMTrainer:
             else:
                 raise NotImplementedError(f"Autoencoder {config.autoencoder_name} not implemented")
             if full_name:
-                loaded = torch.load("/content/NNVisualizationWithAutoencoder/Checkpoints/"+full_name)
+                if self.load_path is None:
+                   self.load_path =  "/content/NNVisualizationWithAutoencoder/Checkpoints"
+                loaded = torch.load(os.path.join(self.load_path, full_name))
                 self.autoencoder.load_state_dict(loaded)
 
         accelerator = Accelerator()  # TODO actually use this other than just preparing stuff
@@ -89,6 +92,18 @@ class DeepDreamLLMTrainer:
             return_tensors="pt",
         ).to(self.device)
 
+    def embeddings_to_tokens(self, embeddings):
+        """
+        Args:
+            embeddings (torch.tensor): the embeddings to unembed, of shape (batch_size, sequence_length, embedding_size)
+        Returns:
+            torch.tensor: the tokens, of shape (batch_size, sequence_length)
+        """
+        with torch.no_grad():
+            pretrained_embeddings = self.model.transformer.wte.weight
+            dot_product = torch.matmul(embeddings, pretrained_embeddings.t())
+            _, tokens = torch.max(dot_product, dim=-1)
+        return tokens
     # 3 kinds of loss: loss, openai_distance, and reencode_loss
     def calc_loss(self, original, reconstructed):
         return torch.mean(torch.norm(original - reconstructed, dim=2))
@@ -109,11 +124,8 @@ class DeepDreamLLMTrainer:
         )
         return distance.item()
 
-    def calc_reencode_loss(self, sentence1, sentence2):
+    def calc_reencode_loss(self, input_ids_1, input_ids_2):
         # this loss is distinguished from original loss by decoding, re-encoding and taking embeddings distance
-        input_ids_1, input_ids_2 = self.encode_sentence(
-            sentence1
-        ), self.encode_sentence(sentence2)
         embeddings_1, embeddings_2 = self.get_embeddings(
             input_ids_1
         ), self.get_embeddings(input_ids_2)
@@ -125,6 +137,13 @@ class DeepDreamLLMTrainer:
         return self.calc_loss(embeddings_1, embeddings_2).item()
 
     def train_autoencoder(self, num_epochs, print_every, save_path=None, num_sentences=None):
+        """
+        Args:
+            num_epochs (int): the number of epochs to train for
+            print_every (int): the number of epochs to print the loss for
+            save_path (Optional[str]): the path to save the model to
+            num_sentences (Optional[int]): the number of sentences to generate at a time
+        """
         if save_path is None:
             save_path = f"/content/NNVisualizationWithAutoencoder/Checkpoints/{self.autoencoder_name}_{num_epochs}_{print_every}.pt"
         losses, openai_losses, reencode_losses = [], [], []
@@ -167,6 +186,7 @@ class DeepDreamLLMTrainer:
 
             if epoch % print_every == 0:
                 # Record the loss value for plotting
+                reconstructed_tokens = self.embeddings_to_tokens(reconstructed_embeddings)
                 reconstructed_sentence = unembed_and_decode(
                     model=self.model,
                     tokenizer=self.tokenizer,
@@ -176,7 +196,7 @@ class DeepDreamLLMTrainer:
                 reconstructed_sentences.append(reconstructed_sentence)
 
                 reencode_loss = self.calc_reencode_loss(
-                    input_sentences[0], reconstructed_sentence
+                    input_ids[0].reshape(1, -1), reconstructed_tokens[0].reshape(1, -1)
                 )
                 reencode_losses.append(reencode_loss)
                 openai_loss = 0
@@ -249,14 +269,14 @@ class DeepDreamLLMTrainer:
 
         input_ids = self.encode_sentence(sentence)
         original_embeddings = self.get_embeddings(input_ids)
-        latent = self.autoencoder.encode(original_embeddings)
+        latent = self.autoencoder.encode(original_embeddings, attention_mask=None) # batch size 1, no mask needed
         latent_vectors = latent.detach().clone().to(self.device)
         latent_vectors.requires_grad = True
 
         if verbose: tqdm.write("original reconstructed sentence is ")
         with torch.no_grad():
             og_reconstructed_sentence = unembed_and_decode(
-                self.model, self.tokenizer, self.autoencoder.decode(latent_vectors)
+                self.model, self.tokenizer, self.autoencoder.decode(latent_vectors, attention_mask=None)
             )
             log_dict["original_sentence_reconstructed"] = og_reconstructed_sentence
         # Create an optimizer for the latent vectors
@@ -287,7 +307,7 @@ class DeepDreamLLMTrainer:
             pbar = range(num_iterations)
         for i in pbar:
             # Construct input for the self.model using the embeddings directly
-            embeddings = self.autoencoder.decode(latent_vectors)
+            embeddings = self.autoencoder.decode(latent_vectors, attention_mask=None)
             _ = self.model(
                 inputs_embeds=embeddings
             )  # the hook means outputs are saved to activation_saved
@@ -323,16 +343,15 @@ class DeepDreamLLMTrainer:
         )
         input_ids = self.encode_sentence(sentence)
         original_embeddings = self.get_embeddings(input_ids)
-        latent = self.autoencoder.encode(original_embeddings)
+        latent = self.autoencoder.encode(original_embeddings, attention_mask=None)
         assert latent.shape[2] == self.autoencoder.latent_dim, (
             f"latent dim {latent.shape[2]} does not match autoencoder latent dim {self.autoencoder.latent_dim}"
         )
 
         # 2
-        reconstructed_embeddings = self.autoencoder.decode(latent)
+        reconstructed_embeddings = self.autoencoder.decode(latent, attention_mask=None)
         assert reconstructed_embeddings.shape == original_embeddings.shape, (
             f"reconstructed_embeddings shape {reconstructed_embeddings.shape} does not match original_embeddings shape {original_embeddings.shape}"
         )
-
 
         return True
