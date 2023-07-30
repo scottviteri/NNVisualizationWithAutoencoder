@@ -92,6 +92,18 @@ class DeepDreamLLMTrainer:
             return_tensors="pt",
         ).to(self.device)
 
+    def embeddings_to_tokens(self, embeddings):
+        """
+        Args:
+            embeddings (torch.tensor): the embeddings to unembed, of shape (batch_size, sequence_length, embedding_size)
+        Returns:
+            torch.tensor: the tokens, of shape (batch_size, sequence_length)
+        """
+        with torch.no_grad():
+            pretrained_embeddings = self.model.transformer.wte.weight
+            dot_product = torch.matmul(embeddings, pretrained_embeddings.t())
+            _, tokens = torch.max(dot_product, dim=-1)
+        return tokens
     # 3 kinds of loss: loss, openai_distance, and reencode_loss
     def calc_loss(self, original, reconstructed):
         return torch.mean(torch.norm(original - reconstructed, dim=2))
@@ -112,11 +124,8 @@ class DeepDreamLLMTrainer:
         )
         return distance.item()
 
-    def calc_reencode_loss(self, sentence1, sentence2):
+    def calc_reencode_loss(self, input_ids_1, input_ids_2):
         # this loss is distinguished from original loss by decoding, re-encoding and taking embeddings distance
-        input_ids_1, input_ids_2 = self.encode_sentence(
-            sentence1
-        ), self.encode_sentence(sentence2)
         embeddings_1, embeddings_2 = self.get_embeddings(
             input_ids_1
         ), self.get_embeddings(input_ids_2)
@@ -177,6 +186,7 @@ class DeepDreamLLMTrainer:
 
             if epoch % print_every == 0:
                 # Record the loss value for plotting
+                reconstructed_tokens = self.embeddings_to_tokens(reconstructed_embeddings)
                 reconstructed_sentence = unembed_and_decode(
                     model=self.model,
                     tokenizer=self.tokenizer,
@@ -186,7 +196,7 @@ class DeepDreamLLMTrainer:
                 reconstructed_sentences.append(reconstructed_sentence)
 
                 reencode_loss = self.calc_reencode_loss(
-                    input_sentences[0], reconstructed_sentence
+                    input_ids[0].reshape(1, -1), reconstructed_tokens[0].reshape(1, -1)
                 )
                 reencode_losses.append(reencode_loss)
                 openai_loss = 0
