@@ -13,6 +13,7 @@ from tqdm.auto import tqdm
 from accelerate import Accelerator
 import numpy as np
 import random
+import os
 from sklearn.metrics.pairwise import cosine_similarity
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
@@ -60,7 +61,9 @@ class DeepDreamLLMTrainer:
             else:
                 raise NotImplementedError(f"Autoencoder {config.autoencoder_name} not implemented")
             if full_name:
-                loaded = torch.load("/content/NNVisualizationWithAutoencoder/Checkpoints/"+full_name)
+                if self.load_path is None:
+                   self.load_path =  "/content/NNVisualizationWithAutoencoder/Checkpoints"
+                loaded = torch.load(os.path.join(self.load_path, full_name))
                 self.autoencoder.load_state_dict(loaded)
 
         accelerator = Accelerator()  # TODO actually use this other than just preparing stuff
@@ -125,6 +128,13 @@ class DeepDreamLLMTrainer:
         return self.calc_loss(embeddings_1, embeddings_2).item()
 
     def train_autoencoder(self, num_epochs, print_every, save_path=None, num_sentences=None):
+        """
+        Args:
+            num_epochs (int): the number of epochs to train for
+            print_every (int): the number of epochs to print the loss for
+            save_path (Optional[str]): the path to save the model to
+            num_sentences (Optional[int]): the number of sentences to generate at a time
+        """
         if save_path is None:
             save_path = f"/content/NNVisualizationWithAutoencoder/Checkpoints/{self.autoencoder_name}_{num_epochs}_{print_every}.pt"
         losses, openai_losses, reencode_losses = [], [], []

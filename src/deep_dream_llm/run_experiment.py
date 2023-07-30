@@ -16,22 +16,23 @@ import pandas as pd
 import tabulate
 import argparse
 import os
+import sys
 
 from utils import unembed_and_decode, update_plot
 from autoencoder import LinearAutoEncoder, Gpt2AutoencoderBoth, TAE, MockAutoencoder
 from training import DeepDreamLLMTrainer
 import config
+
+LOAD_PATH = "Checkpoints"
     
 
 def train_autoencoder_experiment(args):
     train_autoencoder = args.train_autoencoder
-    save_path = args.save_path
+    save_path = os.path.join("Checkpoints", args.save_path)
     n_epochs = args.n_epochs
     autoencoder_name = args.autoencoder_name
     lr_scheduler = args.lr_scheduler
-    autoencoder_path = args.autoencoder_path
-    if autoencoder_path == "":
-        autoencoder_path = None
+    print_every=100
 
     base_model_name = args.base_model_name
 
@@ -59,27 +60,27 @@ def train_autoencoder_experiment(args):
         print("Not using a lr_scheduler")
         lr_scheduler = None
 
-    trainer = DeepDreamLLMTrainer(
-        model=model,
+    cfg = config.TrainingConfig(
+        autoencoder_name=autoencoder_name,
+        load_path=LOAD_PATH,
         tokenizer=tokenizer,
-        optimizer=optimizer,
+        model=model,
         autoencoder=autoencoder,
+        optimizer=optimizer,
         use_openai=False,
         lr_scheduler=lr_scheduler,
-        load_path=autoencoder_path
+        save_path=save_path,
+        is_notebook=False,
+        batch_size=args.batch_size,
     )
-    # tokenizer.pad_token = tokenizer.eos_token
-    # TODO I think a smaller lr will do better
+
+    trainer = DeepDreamLLMTrainer(cfg)
     if train_autoencoder:
-        (
-            losses,
-            openai_losses,
-            reencode_losses,
-            reconstructed_sentences,
-        ) = trainer.train_autoencoder(
-            num_epochs=n_epochs, print_every=100, use_openai=False, save_path=save_path
+        output = trainer.train_autoencoder(
+            num_epochs=n_epochs, print_every=print_every, save_path=save_path
         )
-        update_plot(losses, openai_losses, reencode_losses, save_path=f"{autoencoder_name}-{n_epochs}-epochs-lr-{args.autoencoder_lr}.png")
+        losses, openai_losses, reencode_losses, sentences, reconstructed_sentences = output
+        update_plot(losses, openai_losses, reencode_losses, print_every, save_path=f"{autoencoder_name}-{n_epochs}-epochs-lr-{args.autoencoder_lr}.png")
 
     return trainer
 
@@ -298,7 +299,7 @@ def baseline_optimize_encoding_average():
 
 # # calc_average_emb_distance(10) #0.6956303872374302
 
-def test_optimize_bunch_of_sentences(args, trainer):
+def optimize_bunch_of_sentences(args, trainer):
     og_sentences = []
     og_reconstructed_sentences = []
     reconstructed_sentences = []
@@ -311,7 +312,10 @@ def test_optimize_bunch_of_sentences(args, trainer):
     df = pd.DataFrame.from_dict({"og_sentences": og_sentences, "og_reconstructed_sentences": og_reconstructed_sentences, "final_sentences": reconstructed_sentences})
     table = tabulate.tabulate(df, headers="keys", tablefmt="simple_grid")
     print(table)
-    filename = f"{args.autoencoder_name}-layer-{args.layer_num}-neuron_index-{args.neuron_index}-table"
+    root_dir = args.experiment_save_dir
+    if not os.path.exists(root_dir):
+        os.makedirs(root_dir)
+    filename = os.path.join(root_dir, f"{args.autoencoder_name}-layer-{args.layer_num}-neuron_index-{args.neuron_index}-table")
     # check if filename exists
     if os.path.exists(filename):
         filename += "-1"
@@ -319,6 +323,85 @@ def test_optimize_bunch_of_sentences(args, trainer):
     with open(filename, "w", encoding="utf-8") as file:
         file.write(table)
     print(f"Saved table to {filename}")
+
+
+def experiment_0(args):
+    """
+    Optionaly trains an autoencoder, and then optimizes it for a bunch of sentences.
+    Saves the optimized sentences to a folder.
+    """
+    trainer = train_autoencoder_experiment(args)
+    optimize_bunch_of_sentences(args, trainer)
+
+def experiment_1(args):
+    REPO_ID = "Scottviteri/TransformerAutoencoderLatentDim7"
+    FILENAME = args.autoencoder_name + ".pt"
+
+    ae = TAE("distilgpt2", latent_dim=7)
+    download_path = hf_hub_download(repo_id=REPO_ID, filename=FILENAME)
+    print(download_path)
+    ae.load_state_dict(torch.load(download_path, map_location=torch.device('cpu')))
+
+    cfg = config.TrainingConfig(
+        autoencoder_name=args.autoencoder_name,
+        autoencoder=ae,
+        learning_rate=0.0001,
+        latent_dim=7,
+        batch_size=64,
+        use_openai=False,
+        is_notebook=False
+    )
+    trainer = DeepDreamLLMTrainer(cfg)
+    optimize_bunch_of_sentences(args, trainer)
+
+def experiment_2(args):
+    REPO_ID = "Scottviteri/TransformerAutoencoderLatentDim7"
+    FILENAME = args.autoencoder_name + ".pt"
+
+    ae = TAE("distilgpt2", latent_dim=7)
+    download_path = hf_hub_download(repo_id=REPO_ID, filename=FILENAME)
+    print(download_path)
+    ae.load_state_dict(torch.load(download_path, map_location=torch.device('cpu')))
+
+    cfg = config.TrainingConfig(
+        autoencoder_name=args.autoencoder_name,
+        autoencoder=ae,
+        learning_rate=0.0001,
+        latent_dim=7,
+        batch_size=64,
+        use_openai=False,
+        is_notebook=False
+    )
+    trainer = DeepDreamLLMTrainer(cfg)
+    neurons = []
+    for layer_id in range(5):
+        for neuron_id in range(1,3):
+            neurons.append({"layer_num": layer_id, "neuron_index": neuron_id})
+    for neuron in tqdm(neurons, desc="Neurons", total=len(neurons)):
+        args.layer_num = neuron["layer_num"]
+        args.neuron_index = neuron["neuron_index"]
+        optimize_bunch_of_sentences(args, trainer)
+
+def experiment_3(args):
+    cfg = config.TrainingConfig(
+        autoencoder_name=args.autoencoder_name,
+        learning_rate=0.0001,
+        latent_dim=100,
+        batch_size=64,
+        use_openai=False,
+        is_notebook=False,
+        load_path=LOAD_PATH,
+    )
+    trainer = DeepDreamLLMTrainer(cfg)
+    neurons = []
+    for layer_id in range(5):
+        for neuron_id in range(1,3):
+            neurons.append({"layer_num": layer_id, "neuron_index": neuron_id})
+    for neuron in tqdm(neurons, desc="Neurons", total=len(neurons)):
+        args.layer_num = neuron["layer_num"]
+        args.neuron_index = neuron["neuron_index"]
+        optimize_bunch_of_sentences(args, trainer)
+
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -394,49 +477,35 @@ def parse_args():
         help="Name of the base model to use",
     )
     parser.add_argument(
-        "--test_num",
+        "--experiment_num",
         type=int,
-        default=1,
+        default=0,
         help="Which test to run",
     )
-    return parser.parse_args()
-
-def test_0(args):
-    """
-    Outdated as of july29-2023
-    """
-    trainer = train_autoencoder_experiment(args)
-    test_optimize_bunch_of_sentences(args, trainer)
-
-def test_1(args):
-    REPO_ID = "Scottviteri/TransformerAutoencoderLatentDim7"
-    FILENAME = args.autoencoder_name + ".pt"
-
-    ae = TAE("distilgpt2", latent_dim=7)
-    download_path = hf_hub_download(repo_id=REPO_ID, filename=FILENAME)
-    print(download_path)
-    ae.load_state_dict(torch.load(download_path, map_location=torch.device('cpu')))
-
-    cfg = config.TrainingConfig(
-        autoencoder_name=args.autoencoder_name,
-        autoencoder=ae,
-        learning_rate=0.0001,
-        latent_dim=7,
-        batch_size=64,
-        use_openai=False
+    parser.add_argument(
+        "--experiment_save_dir",
+        type=str,
+        default="experiments",
+        help="Directory to save experiments to",
     )
-    trainer = DeepDreamLLMTrainer(cfg)
-    test_optimize_bunch_of_sentences(args, trainer)
+    parser.add_argument(
+        "--batch_size",
+        type=int,
+        default=32,
+        help="Batch size for training the autoencoder",
+    )
+    return parser.parse_args()
 
 
 def main():
     args = parse_args()
-    if args.test_num == 0:
-        test_0(args)
-    elif args.test_num == 1:
-        test_1(args)
-    else:
-        raise NotImplementedError(f"Test {args.test_num} not implemented")
+    try:
+        func = getattr(sys.modules[__name__], f'experiment_{args.experiment_num}')
+        print(f"Running experiment_{args.experiment_num}")
+        func(args)
+    except AttributeError as e:
+        print(f"Caught error: {e}")
+        print(f"No such experiment: {args.experiment_num}")
 
 if __name__ == "__main__":
     main()

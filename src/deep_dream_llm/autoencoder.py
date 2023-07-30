@@ -75,11 +75,11 @@ class MockAutoencoder(torch.nn.Module):
         self.decoder = Linear(latent_dim, 768)
         self.latent_dim = latent_dim
 
-    def encode(self, input_embeds):
-        return self.encoder(input_embeds)
+    def encode(self, input_embeds, **kwargs):
+        return self.encoder(input_embeds, **kwargs)
 
-    def decode(self, latent):
-        return self.decoder(latent)
+    def decode(self, latent, **kwargs):
+        return self.decoder(latent, **kwargs)
 
     def forward(self, inputs_embeds):
         """
@@ -254,10 +254,10 @@ class LinearAutoEncoder(torch.nn.Module):
         self.encoder = Linear(base_model.config.n_embd, latent_dim)
         self.decoder = Linear(latent_dim, base_model.config.n_embd)
 
-    def encode(self, input_embeds):
+    def encode(self, input_embeds, **kwargs):
         return self.encoder(input_embeds)
 
-    def decode(self, latent):
+    def decode(self, latent, **kwargs):
         return self.decoder(latent)
 
     def forward(self, inputs_embeds, attention_mask=None):
