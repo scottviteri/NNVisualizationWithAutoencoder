@@ -249,14 +249,14 @@ class DeepDreamLLMTrainer:
 
         input_ids = self.encode_sentence(sentence)
         original_embeddings = self.get_embeddings(input_ids)
-        latent = self.autoencoder.encode(original_embeddings)
+        latent = self.autoencoder.encode(original_embeddings, attention_mask=None) # batch size 1, no mask needed
         latent_vectors = latent.detach().clone().to(self.device)
         latent_vectors.requires_grad = True
 
         if verbose: tqdm.write("original reconstructed sentence is ")
         with torch.no_grad():
             og_reconstructed_sentence = unembed_and_decode(
-                self.model, self.tokenizer, self.autoencoder.decode(latent_vectors)
+                self.model, self.tokenizer, self.autoencoder.decode(latent_vectors, attention_mask=None)
             )
             log_dict["original_sentence_reconstructed"] = og_reconstructed_sentence
         # Create an optimizer for the latent vectors
@@ -287,7 +287,7 @@ class DeepDreamLLMTrainer:
             pbar = range(num_iterations)
         for i in pbar:
             # Construct input for the self.model using the embeddings directly
-            embeddings = self.autoencoder.decode(latent_vectors)
+            embeddings = self.autoencoder.decode(latent_vectors, attention_mask=None)
             _ = self.model(
                 inputs_embeds=embeddings
             )  # the hook means outputs are saved to activation_saved
@@ -323,16 +323,15 @@ class DeepDreamLLMTrainer:
         )
         input_ids = self.encode_sentence(sentence)
         original_embeddings = self.get_embeddings(input_ids)
-        latent = self.autoencoder.encode(original_embeddings)
+        latent = self.autoencoder.encode(original_embeddings, attention_mask=None)
         assert latent.shape[2] == self.autoencoder.latent_dim, (
             f"latent dim {latent.shape[2]} does not match autoencoder latent dim {self.autoencoder.latent_dim}"
         )
 
         # 2
-        reconstructed_embeddings = self.autoencoder.decode(latent)
+        reconstructed_embeddings = self.autoencoder.decode(latent, attention_mask=None)
         assert reconstructed_embeddings.shape == original_embeddings.shape, (
             f"reconstructed_embeddings shape {reconstructed_embeddings.shape} does not match original_embeddings shape {original_embeddings.shape}"
         )
-
 
         return True

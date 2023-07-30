@@ -142,7 +142,7 @@
             "justMyCode": true
         },
         {
-            "name": "Optimize a lot of sentences",
+            "name": "[OLD] Optimize a lot of sentences",
             "type": "python",
             "request": "launch",
             "program": "${workspaceFolder}/src/deep_dream_llm/run_experiment.py",
@@ -157,7 +157,47 @@
                 "--layer_num",
                 "5",
                 "--neuron_index",
-                "10"
+                "9"
+            ],
+            "justMyCode": true
+        },
+        {
+            "name": "Optimize a lot of sentences",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/deep_dream_llm/run_experiment.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--autoencoder_name",
+                "TAE_10001_50",
+                "--test_num",
+                "1",
+                "--optimize_n_sentences",
+                "20",
+                "--layer_num",
+                "1",
+                "--neuron_index",
+                "5"
+            ],
+            "justMyCode": true
+        },
+        {
+            "name": "Optimize 2 Sentences",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/deep_dream_llm/run_experiment.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--autoencoder_name",
+                "TAE_10001_50",
+                "--test_num",
+                "1",
+                "--optimize_n_sentences",
+                "2",
+                "--layer_num",
+                "1",
+                "--neuron_index",
+                "5"
             ],
             "justMyCode": true
         },

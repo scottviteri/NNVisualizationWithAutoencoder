@@ -11,6 +11,7 @@ from torch.optim import AdamW
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 from transformers import AutoTokenizer, AutoModelForCausalLM
+from huggingface_hub import hf_hub_download
 import pandas as pd
 import tabulate
 import argparse
@@ -19,6 +20,7 @@ import os
 from utils import unembed_and_decode, update_plot
 from autoencoder import LinearAutoEncoder, Gpt2AutoencoderBoth, TAE, MockAutoencoder
 from training import DeepDreamLLMTrainer
+import config
     
 
 def train_autoencoder_experiment(args):
@@ -296,6 +298,27 @@ def baseline_optimize_encoding_average():
 
 # # calc_average_emb_distance(10) #0.6956303872374302
 
+def test_optimize_bunch_of_sentences(args, trainer):
+    og_sentences = []
+    og_reconstructed_sentences = []
+    reconstructed_sentences = []
+    for _ in tqdm(range(args.optimize_n_sentences), desc="Num_sentences"):
+        log_out = optimize_encoding_average(args, trainer, plot=False)
+        og_sentences.append(log_out["original_sentence"])
+        og_reconstructed_sentences.append(log_out["original_sentence_reconstructed"])
+        reconstructed_sentences.append(log_out["final_sentence"])
+    # make this into a table and print the table
+    df = pd.DataFrame.from_dict({"og_sentences": og_sentences, "og_reconstructed_sentences": og_reconstructed_sentences, "final_sentences": reconstructed_sentences})
+    table = tabulate.tabulate(df, headers="keys", tablefmt="simple_grid")
+    print(table)
+    filename = f"{args.autoencoder_name}-layer-{args.layer_num}-neuron_index-{args.neuron_index}-table"
+    # check if filename exists
+    if os.path.exists(filename):
+        filename += "-1"
+    filename += ".txt"
+    with open(filename, "w", encoding="utf-8") as file:
+        file.write(table)
+    print(f"Saved table to {filename}")
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -370,32 +393,50 @@ def parse_args():
         default="distilgpt2",
         help="Name of the base model to use",
     )
+    parser.add_argument(
+        "--test_num",
+        type=int,
+        default=1,
+        help="Which test to run",
+    )
     return parser.parse_args()
+
+def test_0(args):
+    """
+    Outdated as of july29-2023
+    """
+    trainer = train_autoencoder_experiment(args)
+    test_optimize_bunch_of_sentences(args, trainer)
+
+def test_1(args):
+    REPO_ID = "Scottviteri/TransformerAutoencoderLatentDim7"
+    FILENAME = args.autoencoder_name + ".pt"
+
+    ae = TAE("distilgpt2", latent_dim=7)
+    download_path = hf_hub_download(repo_id=REPO_ID, filename=FILENAME)
+    print(download_path)
+    ae.load_state_dict(torch.load(download_path, map_location=torch.device('cpu')))
+
+    cfg = config.TrainingConfig(
+        autoencoder_name=args.autoencoder_name,
+        autoencoder=ae,
+        learning_rate=0.0001,
+        latent_dim=7,
+        batch_size=64,
+        use_openai=False
+    )
+    trainer = DeepDreamLLMTrainer(cfg)
+    test_optimize_bunch_of_sentences(args, trainer)
 
 
 def main():
     args = parse_args()
-    trainer = train_autoencoder_experiment(args)
-    og_sentences = []
-    og_reconstructed_sentences = []
-    reconstructed_sentences = []
-    for _ in tqdm(range(args.optimize_n_sentences), desc="Num_sentences"):
-        log_out = optimize_encoding_average(args, trainer, plot=False)
-        og_sentences.append(log_out["original_sentence"])
-        og_reconstructed_sentences.append(log_out["original_sentence_reconstructed"])
-        reconstructed_sentences.append(log_out["final_sentence"])
-    # make this into a table and print the table
-    df = pd.DataFrame.from_dict({"og_sentences": og_sentences, "og_reconstructed_sentences": og_reconstructed_sentences, "final_sentences": reconstructed_sentences})
-    table = tabulate.tabulate(df, headers="keys", tablefmt="psql")
-    print(table)
-    filename = f"{args.autoencoder_name}-layer-{args.layer_num}-neuron_index-{args.neuron_index}-table"
-    # check if filename exists
-    if os.path.exists(filename):
-        filename += "-1"
-    filename += ".txt"
-    with open(filename, "w", encoding="utf-8") as file:
-        file.write(table)
-
+    if args.test_num == 0:
+        test_0(args)
+    elif args.test_num == 1:
+        test_1(args)
+    else:
+        raise NotImplementedError(f"Test {args.test_num} not implemented")
 
 if __name__ == "__main__":
     main()
