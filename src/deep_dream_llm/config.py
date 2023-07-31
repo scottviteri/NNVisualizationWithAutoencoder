@@ -5,7 +5,7 @@ from typing import Optional
 
 @dataclass
 class TrainingConfig:
-    autoencoder_name: str
+    autoencoder_name: str = None
     load_path: str = None
     tokenizer: AutoTokenizer = None
     model: AutoModelForCausalLM = None

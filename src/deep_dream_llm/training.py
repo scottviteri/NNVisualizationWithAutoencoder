@@ -237,7 +237,7 @@ class DeepDreamLLMTrainer:
         loss_fn=neuron_loss_fn,
         learning_rate=0.1,
         seed=42,
-        verbose=True
+        verbose=False
     ):
         """
         Args:
