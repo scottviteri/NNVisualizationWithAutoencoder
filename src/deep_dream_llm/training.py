@@ -320,7 +320,7 @@ class DeepDreamLLMTrainer:
                 if verbose: tqdm.write(f"Loss at step {i}: {loss.item()}\n", end="")
                 reconstructed_sentence = unembed_and_decode(
                     self.model, self.tokenizer, embeddings
-                )
+                )[0]
                 if verbose: tqdm.write(reconstructed_sentence, end="")
                 log_dict["reconstructed_sentences"].append(reconstructed_sentence)
                 log_dict["activations"].append(activation_saved[0].item())
