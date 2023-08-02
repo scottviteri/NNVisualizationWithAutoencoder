@@ -8,6 +8,7 @@ TODO: Fix the whole thing where generated sentences include a ton of \n tokens.
 
 import torch
 from torch.optim import AdamW
+import accelerate
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 from transformers import AutoTokenizer, AutoModelForCausalLM
@@ -18,7 +19,7 @@ import argparse
 import os
 import sys
 
-from utils import unembed_and_decode, update_plot
+from deep_dream_llm.utils import unembed_and_decode, update_plot, optimize_for_neuron_whole_input
 from autoencoder import LinearAutoEncoder, Gpt2AutoencoderBoth, TAE, MockAutoencoder
 from training import DeepDreamLLMTrainer
 import config
@@ -273,32 +274,6 @@ def baseline_optimize_encoding_average():
     plt.show()
 
 
-# prompt: Generate random pairs of sentences using gpt2, and get the average ada embedding distance
-
-# def calc_average_emb_distance(num_pairs):
-#     # Initialize the tokenizer
-#     tokenizer = AutoTokenizer.from_pretrained('distilgpt2')
-
-#     # Initialize gpt2
-#     model = AutoModelForCausalLM.from_pretrained('distilgpt2').to(device)
-#     model.eval()
-
-#     pbar = tqdm(range(num_pairs))
-#     similarity_values = []
-#     # Generate random pairs of sentences
-#     for i in pbar:
-#         sentence1 = generate_sentence(model, tokenizer, max_length=50)
-#         sentence2 = generate_sentence(model, tokenizer, max_length=50)
-#         # Compute cosine similarity between embeddings
-#         similarity = get_sentence_similarity(sentence1, sentence2)
-#         # Store the similarity value
-#         similarity_values.append(similarity)
-#         pbar.set_description(f"Running average: {np.mean(similarity_values)}")
-#     # Print the average similarity value
-#     return np.mean(similarity_values)
-
-# # calc_average_emb_distance(10) #0.6956303872374302
-
 def optimize_bunch_of_sentences(args, trainer):
     og_sentences = []
     og_reconstructed_sentences = []
@@ -402,6 +377,25 @@ def experiment_3(args):
         args.neuron_index = neuron["neuron_index"]
         optimize_bunch_of_sentences(args, trainer)
 
+def experiment_4(args):
+    """
+    Test for optimize for neuron whole input
+    """
+    accelerator = accelerate.Accelerator()
+    device = accelerator.device
+    print("Device:", device)
+    model = AutoModelForCausalLM.from_pretrained("distilgpt2").to(device)
+    tokenizer = AutoTokenizer.from_pretrained("distilgpt2")
+    autoencoder = LinearAutoEncoder("distilgpt2")
+    autoencoder, model = accelerator.prepare(autoencoder, model)
+    losses, log_output = optimize_for_neuron_whole_input(
+        model=model,
+        tokenizer=tokenizer,
+        autoencoder=autoencoder,
+    )
+    # graph the loss
+    plt.plot(losses)
+    plt.show()
 
 def parse_args():
     parser = argparse.ArgumentParser()

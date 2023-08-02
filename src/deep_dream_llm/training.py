@@ -20,7 +20,7 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 from config import TrainingConfig
 from autoencoder import TAE, LinearAutoEncoder, Gpt2AutoencoderBoth
 
-from utils import (
+from deep_dream_llm.utils import (
     unembed_and_decode,
     generate_sentence,
     generate_sentence_batched,
@@ -141,8 +141,12 @@ class DeepDreamLLMTrainer:
         Args:
             num_epochs (int): the number of epochs to train for
             print_every (int): the number of epochs to print the loss for
-            save_path (Optional[str]): the path to save the model to
+            save_path (Optional[str]): the path to save the model to, e.g. Checkpoints/linear_10_100.pt
             num_sentences (Optional[int]): the number of sentences to generate at a time
+        Returns:
+            losses, openai_losses, reencode_losses, sentences, reconstructed_sentences
+            losses has shape (num_epochs,)
+            openai_losses etc. have shape (num_epochs // print_every,)
         """
         if save_path is None:
             save_path = f"/content/NNVisualizationWithAutoencoder/Checkpoints/{self.autoencoder_name}_{num_epochs}_{print_every}.pt"
@@ -154,8 +158,8 @@ class DeepDreamLLMTrainer:
         for epoch in pbar:
             # If there aren't enough sentences left, generate new ones
             if sentences.size < self.batch_size:
-                print("Ran out of sentences, generating another batch")
                 nsent = num_sentences if num_sentences else 1000
+                print(f"Ran out of sentences, generating another batch of size {nsent}")
                 new_sentences = generate_sentence_batched(
                     self.model, self.tokenizer, n=nsent
                 )
@@ -164,10 +168,7 @@ class DeepDreamLLMTrainer:
             # Extract a batch of sentences and remove them from the array
             input_sentences = sentences[:self.batch_size]
             sentences = sentences[self.batch_size:]
-            # input_ids, attention_mask = self.tokenizer.encode(
-            #   input_sentences, padding=True, truncation=True, return_tensors="pt").to(
-            #     self.device
-            # )
+
             encoding = self.tokenizer(input_sentences.tolist(), padding=True, truncation=True, return_tensors="pt")
             input_ids = encoding["input_ids"].to(self.device)
             attention_mask = encoding["attention_mask"].to(self.device)
@@ -184,7 +185,7 @@ class DeepDreamLLMTrainer:
 
             losses.append(loss.item())
 
-            if epoch % print_every == 0:
+            if epoch % print_every == 0 or epoch == num_epochs - 1:
                 # Record the loss value for plotting
                 reconstructed_tokens = self.embeddings_to_tokens(reconstructed_embeddings)
                 reconstructed_sentence = unembed_and_decode(
@@ -221,113 +222,6 @@ class DeepDreamLLMTrainer:
                 if save_path: torch.save(self.autoencoder.state_dict(), save_path)
         return losses, openai_losses, reencode_losses, sentences, reconstructed_sentences
 
-    def neuron_loss_fn(activation):
-        """
-        Default loss function
-        """
-        return -torch.sigmoid(activation)
-
-    def optimize_for_neuron_whole_input(
-        self,
-        neuron_index=0,
-        layer_num=1,
-        mlp_or_attention="mlp",
-        num_tokens=50,
-        num_iterations=200,
-        loss_fn=neuron_loss_fn,
-        learning_rate=0.1,
-        seed=42,
-        verbose=False
-    ):
-        """
-        Args:
-            neuron_index (int): the index of the neuron to optimize for
-            layer_num (int): the layer number to optimize for
-            mlp_or_attention (str): 'mlp' or 'attention'
-            num_tokens (int): the number of tokens to in the sentence that we optimize over
-            num_iterations (int): the number of iterations to run the optimization for
-            loss_fn (function): the loss function to use.
-            learning_rate (float): the learning rate to use for the optimizer
-            seed (int): the seed to use for reproducibility
-        Returns:
-            losses (list): the list of losses of the model
-            log_dict (dict): has keys below
-                original_sentence (str): the original generated sentence
-                original_sentence_reconstructed (str) : the original sentence after reconstructing it
-                reconstructed_sentences (list): Reconstructed sentences during training every 1/30th of the way through
-                activations (list): Average activations of the neuron every 1/30th of the way through
-        """
-        log_dict = {}
-
-        # Set the seed for reproducibility
-        sentence = generate_sentence(
-            self.model, self.tokenizer, max_length=num_tokens, seed=seed
-        )
-        if verbose: tqdm.write("Original sentence is:")
-        if verbose: tqdm.write(sentence)
-        log_dict["original_sentence"] = sentence
-
-        input_ids = self.encode_sentence(sentence)
-        original_embeddings = self.get_embeddings(input_ids)
-        latent = self.autoencoder.encode(original_embeddings, attention_mask=None) # batch size 1, no mask needed
-        latent_vectors = latent.detach().clone().to(self.device)
-        latent_vectors.requires_grad = True
-
-        if verbose: tqdm.write("original reconstructed sentence is ")
-        with torch.no_grad():
-            og_reconstructed_sentence = unembed_and_decode(
-                self.model, self.tokenizer, self.autoencoder.decode(latent_vectors, attention_mask=None)
-            )
-            log_dict["original_sentence_reconstructed"] = og_reconstructed_sentence
-        # Create an optimizer for the latent vectors
-        optimizer = AdamW(
-            [latent_vectors], lr=learning_rate
-        )  # You may need to adjust the learning rate
-
-        if "mlp" in mlp_or_attention:
-            layer = self.model.transformer.h[layer_num].mlp.c_fc
-        elif "attention" in mlp_or_attention:
-            layer = self.model.transformer.h[layer_num].attn.c_attn
-        else:
-            raise NotImplementedError("Haven't implemented attention block yet")
-
-        activation_saved = [torch.tensor(0.0, device=self.device)]
-
-        def hook(model, input, output):
-            # The output is a tensor. We're getting the average activation of the neuron across all tokens.
-            activation = output[0, :, neuron_index].mean()
-            activation_saved[0] = activation
-
-        handle = layer.register_forward_hook(hook)
-
-        losses, log_dict["reconstructed_sentences"], log_dict["activations"] = [], [], []
-        if verbose:
-            pbar = tqdm(range(num_iterations), position=0, leave=True)
-        else:
-            pbar = range(num_iterations)
-        for i in pbar:
-            # Construct input for the self.model using the embeddings directly
-            embeddings = self.autoencoder.decode(latent_vectors, attention_mask=None)
-            _ = self.model(
-                inputs_embeds=embeddings
-            )  # the hook means outputs are saved to activation_saved
-            # We want to maximize activation, which is equivalent to minimizing negative activation
-            loss = loss_fn(activation_saved[0])
-            loss.backward()
-            optimizer.step()
-            losses.append(loss.item())
-            if i % (num_iterations // 30) == 0:
-                if verbose: tqdm.write(f"Loss at step {i}: {loss.item()}\n", end="")
-                reconstructed_sentence = unembed_and_decode(
-                    self.model, self.tokenizer, embeddings
-                )[0]
-                if verbose: tqdm.write(reconstructed_sentence, end="")
-                log_dict["reconstructed_sentences"].append(reconstructed_sentence)
-                log_dict["activations"].append(activation_saved[0].item())
-            optimizer.zero_grad()
-
-        handle.remove()  # Don't forget to remove the hook!
-        return losses, log_dict
 
     def test_autoencoder_shapes(self):
         """

@@ -239,5 +239,41 @@
             ],
             "justMyCode": true
         },
+        {
+            "name": "Test optimize_for_neuron_whole_input",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/deep_dream_llm/run_experiment.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--experiment_num",
+                "4",
+            ],
+            "justMyCode": true
+        },
+        {
+            "name": "Final Experiment Loss vs. latent dim",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/deep_dream_llm/final_experiments.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--experiment_id",
+                "0"
+            ],
+            "justMyCode": true
+        },
+        {
+            "name": "Final Experiment Demo Text",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/deep_dream_llm/final_experiments.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--experiment_id",
+                "2"
+            ],
+            "justMyCode": true
+        },
     ]
 }
