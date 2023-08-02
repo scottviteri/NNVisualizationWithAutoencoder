@@ -1,3 +1,0 @@
-Checkpoints/TAE_l20_l8_h8.pt filter=lfs diff=lfs merge=lfs -text
-Checkpoints/keep filter=lfs diff=lfs merge=lfs -text
-Checkpoints/TAE_l100_l8_h8.pt filter=lfs diff=lfs merge=lfs -text

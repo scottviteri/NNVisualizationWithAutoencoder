@@ -5,6 +5,6 @@ autoencoder.pt
 classifier.pt
 neuron_visualizations/*
 .ipynb_checkpoints/*
-
+Checkpoints/*
 *.egg-info
 build
