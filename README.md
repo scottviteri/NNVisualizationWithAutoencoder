@@ -8,3 +8,6 @@ pip install --pre torch torchvision torchaudio --index-url https://download.pyto
 
 ## Usage
 See .vscode/launch.json for exact python commands and tests that were run
+
+## Demo
+See scottviteri/com/post/deep-dream-for-tranformers for a brief demo
