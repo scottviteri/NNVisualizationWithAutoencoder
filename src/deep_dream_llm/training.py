@@ -73,14 +73,17 @@ class DeepDreamLLMTrainer:
             self.optimizer = torch.optim.AdamW(self.autoencoder.parameters(), lr=self.learning_rate)
         self.model, self.optimizer, self.autoencoder = accelerator.prepare(self.model, self.optimizer, self.autoencoder)
         self.device = accelerator.device
+        for param in self.model.parameters():
+            param.requires_grad = False
+
+        #self.lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, 'min')
         #self.lr_scheduler = torch.optim.lr_scheduler.LambdaLR(self.optimizer,
         #    lambda epoch: 10 * epoch / 1001 if epoch / 1001 < 0.1 else 1 - epoch / 1001)
-        self.lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(self.optimizer, gamma=0.99)
+        #self.lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(self.optimizer, gamma=0.99)
+        self.lr_scheduler = None
         if self.tokenizer is None:
             self.tokenizer = AutoTokenizer.from_pretrained("distilgpt2", use_fast=True)
         self.tokenizer.pad_token = self.tokenizer.eos_token
-
-        self.truncated_model = AutoModelForCausalLM.from_pretrained("distilgpt2")
 
         #print("Testing autoencoder shapes")
         #self.test_autoencoder_shapes()
@@ -136,13 +139,13 @@ class DeepDreamLLMTrainer:
             handle_output[0] = output
 
         # Register the forward hook on the third transformer block
-        handle = self.model.transformer.h[4].register_forward_hook(hook)
+        handle = self.model.transformer.h[5].register_forward_hook(hook)
 
         # Run the original and reconstructed inputs through the model
         self.model(inputs_embeds=original)
-        orig_vecs = handle_output[0][0].clone() #[batch_size, seq_len, embedding_dim]
+        orig_vecs = handle_output[0][0].clone()#.detach() #[batch_size, seq_len, embedding_dim]
         self.model(inputs_embeds=reconstructed)
-        recon_vecs = handle_output[0][0].clone()
+        recon_vecs = handle_output[0][0].clone()#.detach()
 
         # Remove the hook
         handle.remove()
@@ -214,7 +217,7 @@ class DeepDreamLLMTrainer:
 
             # Extract a batch of sentences and remove them from the array
             input_sentences = sentences[:self.batch_size]
-            sentences = sentences[self.batch_size:]
+            sentences = sentences#[self.batch_size:]
 
             encoding = self.tokenizer(input_sentences.tolist(), padding=True, truncation=True, return_tensors="pt")
             input_ids = encoding["input_ids"].to(self.device)
@@ -226,9 +229,10 @@ class DeepDreamLLMTrainer:
             loss = self.model_embed_loss(original_embeddings, reconstructed_embeddings)
 
             loss.backward()
+            #print(self.autoencoder.projection_1.weight.grad)
             self.optimizer.step()
             if self.lr_scheduler is not None:
-                self.lr_scheduler.step()
+                self.lr_scheduler.step(loss)
             self.optimizer.zero_grad()
 
             losses.append(loss.item())
