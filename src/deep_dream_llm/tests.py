@@ -5,12 +5,14 @@ TODO This file is a Work in progress
 """
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import numpy as np
-from tqdm import tqdm
+from tqdm.auto import tqdm
+import torch
 
-from autoencoder import *
-from run_experiment import *
-from training import *
-from utils import *
+import autoencoder
+#import run_experiment
+import utils
+import config
+import training
 
 # def test_calc_loss():
 #     assert calc_loss("there", "there") == 0.0
@@ -21,7 +23,7 @@ from utils import *
 #     except:
 #         print("success")
 
-def test_injective_tokenizer(tokens=None, verbose=False):
+def test_injective_tokenizer_inner(tokens=None, verbose=False):
     # load gpt2 tokenizer
     tokenizer = AutoTokenizer.from_pretrained("distilgpt2")
     # first we test Tokens to sentence to tokens is the identity
@@ -50,12 +52,31 @@ def test_injective_tokenizer(tokens=None, verbose=False):
     if verbose: print("Done")
     return TST, STS
 
-if __name__ == "__main__":
+def test_injective_tokenizer():
     ones = np.ones((10,), dtype=np.int32)
-    TST, STS = test_injective_tokenizer(ones)
-    for i in tqdm(range(100)):
-        tmp1, tmp2 = test_injective_tokenizer()
+    TST, STS = test_injective_tokenizer_inner(ones)
+    for i in tqdm(range(10)):
+        tmp1, tmp2 = test_injective_tokenizer_inner()
         TST = TST and tmp1
         STS = STS and tmp2
-    print(f"TST: {TST}\nSTS: {STS}")
+    assert(not(TST) and STS)
+    
+def test_valid_distance_metric():
+    cfg = config.TrainingConfig(
+            autoencoder_name="TAE",
+            learning_rate=0.0001,
+            latent_dim=20,
+            batch_size=4,
+            use_openai=False,
+            is_notebook=True,
+    )
+    trainer = training.DeepDreamLLMTrainer(cfg)
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    t1 = torch.randn((3,20,768), device=device)
+    t2 = t1.clone()
+    assert trainer.model_embed_loss(t1,t2) < 1e-4
+
+if __name__ == "__main__":
+    test_injective_tokenizer()
+    test_valid_distance_metric()
     
