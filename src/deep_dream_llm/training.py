@@ -77,7 +77,8 @@ class DeepDreamLLMTrainer:
         #    lambda epoch: 10 * epoch / 1001 if epoch / 1001 < 0.1 else 1 - epoch / 1001)
         #self.lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(self.optimizer, gamma=0.99)
         #self.lr_scheduler = None
-        self.lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(self.optimizer, 1000)
+        #self.lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(self.optimizer, 1000, T_mult=2)
+        self.lr_scheduler = torch.optim.lr_scheduler.ConstantLR(self.optimizer)
         #self.lr_scheduler = torch.optim.lr_scheduler.OneCycleLR(self.optimizer, max_lr=0.001)
         if self.tokenizer is None:
             self.tokenizer = AutoTokenizer.from_pretrained("distilgpt2", use_fast=True)
@@ -109,9 +110,11 @@ class DeepDreamLLMTrainer:
             dot_product = torch.matmul(embeddings, pretrained_embeddings.t())
             _, tokens = torch.max(dot_product, dim=-1)
         return tokens
+
     # 3 kinds of loss: loss, openai_distance, and reencode_loss
     def calc_loss(self, original, reconstructed):
-        return torch.mean(torch.norm(original - reconstructed, dim=2))
+        #return torch.mean(torch.norm(original - reconstructed, dim=2))
+        return 1 - cosine_similarity(original, reconstructed, dim=2)
 
     def model_embed_loss(self, original, reconstructed, attention_mask):
         """
@@ -141,9 +144,9 @@ class DeepDreamLLMTrainer:
 
         # Run the original and reconstructed inputs through the model
         self.model(inputs_embeds=original, attention_mask = attention_mask)
-        orig_vecs = handle_output[0][0].clone()#.detach() #[batch_size, seq_len, embedding_dim]
+        orig_vecs = handle_output[0][0].clone() #[batch_size, seq_len, embedding_dim]
         self.model(inputs_embeds=reconstructed, attention_mask = attention_mask)
-        recon_vecs = handle_output[0][0].clone()#.detach()
+        recon_vecs = handle_output[0][0].clone()
 
         # Remove the hook
         handle.remove()
@@ -154,9 +157,10 @@ class DeepDreamLLMTrainer:
 
         # Compute the MSE between the averaged embeddings for each item in the batch
         mse_per_batch = ((orig_vecs_token_ave - recon_vecs_token_ave)**2).mean(dim=-1) #[batch_size]
+        cos_per_batch = 1 - cosine_similarity(orig_vecs_token_ave, recon_vecs_token_ave, dim=1) #[batch_size]
 
         # Return the mean of these MSE values, effectively averaging the loss across the batch
-        return mse_per_batch.mean()
+        return cos_per_batch.mean()
 
 
     def calc_openai_loss(self, sentence1, sentence2):
@@ -197,7 +201,7 @@ class DeepDreamLLMTrainer:
         """
         if save_path is None:
             save_path = f"/content/NNVisualizationWithAutoencoder/Checkpoints/{self.autoencoder_name}_{num_epochs}_{print_every}.pt"
-        losses, openai_losses, reencode_losses = [], [], []
+        losses, direct_losses, openai_losses, reencode_losses = [], [], [], []
         sentences, reconstructed_sentences = np.array([]), []
 
         #pbar = tqdm(range(num_epochs))
@@ -223,10 +227,10 @@ class DeepDreamLLMTrainer:
 
             original_embeddings = self.get_embeddings(input_ids)
             reconstructed_embeddings = self.autoencoder(original_embeddings, attention_mask.T==0)
-            #loss = self.calc_loss(original_embeddings, reconstructed_embeddings).sum()
+            direct_loss = self.calc_loss(original_embeddings, reconstructed_embeddings).sum()
             # not passing attention mask to GPT2
-            loss = self.model_embed_loss(original_embeddings, reconstructed_embeddings, attention_mask)
-
+            model_embed_loss = self.model_embed_loss(original_embeddings, reconstructed_embeddings, attention_mask)
+            loss = direct_loss*lam + model_embed_loss*(1-lam)
             loss.backward()
             #print(self.autoencoder.projection_1.weight.grad)
             self.optimizer.step()
@@ -246,7 +250,8 @@ class DeepDreamLLMTrainer:
                 )[0]
                 input_sentence = input_sentences[0]
                 reconstructed_sentences.append(reconstructed_sentence)
-
+                direct_loss = self.calc_loss(original_embeddings, reconstructed_embeddings).sum().item()
+                direct_losses.append(direct_loss)
                 reencode_loss = None
                 if self.use_reencode:
                     reencode_loss = self.calc_reencode_loss(
@@ -262,12 +267,13 @@ class DeepDreamLLMTrainer:
                 if self.is_notebook:
                     from IPython.display import clear_output
                     clear_output(wait=True)
-                    update_plot(losses, openai_losses, reencode_losses, print_every)
+                    update_plot(losses, direct_losses, openai_losses, reencode_losses, print_every)
                 print_results(
                     epoch,
                     input_sentence,
                     reconstructed_sentence,
                     loss.item(),
+                    direct_loss, 
                     openai_loss,
                     reencode_loss,
                     num_epochs,

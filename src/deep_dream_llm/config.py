@@ -20,3 +20,4 @@ class TrainingConfig:
     is_notebook: bool = True
     num_sentences: int = 1000
     save_path: str = None
+    lam = float = 0.5

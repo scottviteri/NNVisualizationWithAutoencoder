@@ -251,7 +251,7 @@ def gen_sentences(model, tokenizer, n=10, sentence_length=50):
     return sentences
 
 
-def update_plot(losses, openai_losses, reencode_losses, print_every, save_path=None):
+def update_plot(losses, direct_losses, openai_losses, reencode_losses, print_every, save_path=None):
     """
     Args:
         losses - a list of losses
@@ -264,8 +264,11 @@ def update_plot(losses, openai_losses, reencode_losses, print_every, save_path=N
     ax1.set_xlabel("Training Step")
     ax1.set_ylabel("Loss", color="b")
     xs = [i*print_every for i in range(len(losses)//print_every)]
+    ax1.set_ylim(bottom=0, top=max(losses[-1*(len(losses)//2):]))
     ax1.plot(xs, [losses[x] for x in xs], color="b")
-    ax1.set_ylim(bottom=0, top=max(losses[-len(losses)//2:]))
+    if direct_losses:
+        xs = [i*print_every for i in range(len(direct_losses)//print_every)]
+        ax1.plot(xs, [direct_losses[x] for x in xs], color="y")
     if reencode_losses:
         ax1.tick_params("y", colors="r")
         ax1.set_ylabel("Reencode Loss", color="r", labelpad=15)
@@ -288,12 +291,13 @@ def print_results(
     original_sentence,
     reconstructed_sentence,
     loss,
+    direct_loss,
     openai_loss,
     reencode_loss,
     total_epochs,
     learning_rate = None
 ):
-    print(f"Epoch {epoch}/{total_epochs}, Loss: {round(loss, 4)}")
+    print(f"Epoch {epoch}/{total_epochs}, Loss: {round(loss, 4)}, Direct Loss: {round(direct_loss, 4)}")
     if learning_rate: print(f"LR: {learning_rate}")
     if openai_loss: print(f"Openai Loss: {round(openai_loss, 4)}")
     if reencode_loss: print(f"Reencode Loss: {round(reencode_loss, 4)}")
