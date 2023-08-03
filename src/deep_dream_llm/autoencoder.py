@@ -93,7 +93,7 @@ class MockAutoencoder(torch.nn.Module):
 
 
 class TAE(torch.nn.Module):
-    def __init__(self, model_checkpoint, latent_dim, nhead=8, num_layers=8):
+    def __init__(self, model_checkpoint, latent_dim, nhead=4, num_layers=4):
         """
         TODO: Test this
         """
