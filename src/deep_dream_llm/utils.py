@@ -8,6 +8,7 @@ import torch
 from tqdm import tqdm
 import random
 import textwrap
+from accelerate import Accelerator
 
 import matplotlib.pyplot as plt
 
@@ -45,16 +46,16 @@ def unembed_and_decode(model, tokenizer, embeds_input):
     """
     # original_shape = embeds_input.shape
     with torch.no_grad():
-        with autocast():
-            # Get the pre-trained embeddings
-            pretrained_embeddings = model.transformer.wte.weight
-            # if pretrained_embeddings.dtype != embeds_input.dtype:
-            # These types don't match so we use auto cast.
-            #   print(f"types don't match, got for embeds inputs { embeds_input.dtype}, and {pretrained_embeddings.dtype} for embeddings matrix from gpt2 model")
-            # Calculate dot product between input embeddings and pre-trained embeddings
-            dot_product = torch.matmul(embeds_input, pretrained_embeddings.t())
-            # Get the index of the highest value along dimension 2 (tokens)
-            _, tokens = torch.max(dot_product, dim=-1)
+        # with autocast():
+        # Get the pre-trained embeddings
+        pretrained_embeddings = model.transformer.wte.weight
+        # if pretrained_embeddings.dtype != embeds_input.dtype:
+        # These types don't match so we use auto cast.
+        #   print(f"types don't match, got for embeds inputs { embeds_input.dtype}, and {pretrained_embeddings.dtype} for embeddings matrix from gpt2 model")
+        # Calculate dot product between input embeddings and pre-trained embeddings
+        dot_product = torch.matmul(embeds_input, pretrained_embeddings.t())
+        # Get the index of the highest value along dimension 2 (tokens)
+        _, tokens = torch.max(dot_product, dim=-1)
     # Decode tokens into text using the tokenizer
     text = tokenizer.batch_decode(tokens.tolist())
     # # Encode the text again to verify number of tokens is the same
@@ -183,6 +184,126 @@ def optimize_for_neuron_whole_input(
     handle.remove()  # Don't forget to remove the hook!
     return losses, log_dict
 
+
+def optimize_for_neuron_whole_input_batched(
+    model,
+    tokenizer,
+    autoencoder,
+    neuron_index=0,
+    layer_num=1,
+    mlp_or_attention="mlp",
+    num_tokens=50,
+    num_iterations=200,
+    loss_fn=None,
+    learning_rate=0.1,
+    seed=42,
+    sentences=None,
+    verbose=False
+):
+    """
+    Implements the optimization of a batch of sentences all at once
+    Args:
+        model (GPT2LMHeadModel): the model to optimize for
+        tokenizer (GPT2Tokenizer): the tokenizer to use
+        autoencoder (Autoencoder): the autoencoder to use
+        neuron_index (int): the index of the neuron to optimize for
+        layer_num (int): the layer number to optimize for
+        mlp_or_attention (str): 'mlp' or 'attention'
+        num_tokens (int): the number of tokens to in the sentence that we optimize over
+        num_iterations (int): the number of iterations to run the optimization for
+        loss_fn (function): the loss function to use.
+        learning_rate (float): the learning rate to use for the optimizer
+        seed (int): the seed to use for reproducibility
+    Returns:
+        losses (list): the list of losses of the model, shape [num_iterations]
+        log_dict (dict): has shape [num_iterations // 30] and has keys below
+            original_sentence (str): the original generated sentence
+            original_sentence_reconstructed (str) : the original sentence after reconstructing it
+            reconstructed_sentences (list): Reconstructed sentences during training every 1/30th of the way through
+            activations (list): Average activations of the neuron every 1/30th of the way through
+    """
+    log_dict = {}
+    device = next(model.parameters()).device
+    if loss_fn is None:
+        loss_fn = lambda x: -torch.sigmoid(x)
+
+    # Set the seed for reproducibility
+    if sentences is None:
+        raise NotImplementedError("Need to implement sentence generation in batches")
+        if verbose: tqdm.write("Generating sentence because no sentence was provided")
+        sentence = generate_sentence_batched(
+            model, tokenizer, max_length=num_tokens, seed=seed
+        )
+    if verbose: tqdm.write("Original sentence is:")
+
+    input_ids = torch.stack([tokenizer.encode(
+            sentence,
+            return_tensors="pt",
+        ).squeeze().to(device) for sentence in sentences])
+    original_embeddings = model.transformer.wte(input_ids)
+    latent = autoencoder.encode(original_embeddings, attention_mask=None) # batch size 1, no mask needed
+    latent_vectors = latent.detach().clone().to(device)
+    latent_vectors.requires_grad = True
+
+    if verbose: tqdm.write("original reconstructed sentence is ")
+    with torch.no_grad():
+        og_reconstructed_sentences = [unembed_and_decode(
+            model, tokenizer, autoencoder.decode(latent_vec, attention_mask=None)
+        ) for latent_vec in latent_vectors]
+        log_dict["original_sentence_reconstructed"] = og_reconstructed_sentences
+    # Create an optimizer for the latent vectors
+    optimizer = torch.optim.AdamW(
+        [latent_vectors], lr=learning_rate
+    )  # You may need to adjust the learning rate
+
+    if "mlp" in mlp_or_attention:
+        layer = model.transformer.h[layer_num].mlp.c_fc
+    elif "attention" in mlp_or_attention:
+        layer = model.transformer.h[layer_num].attn.c_attn
+    else:
+        raise NotImplementedError("Haven't implemented attention block yet")
+
+    activation_saved = []
+
+    def hook(model, input, output):
+        # The output is a tensor. We're getting the average activation of the neuron across all tokens.
+        activation = output[:, :, neuron_index].mean(dim=1)
+        activation_saved[0] = activation
+
+    handle = layer.register_forward_hook(hook)
+
+    losses, log_dict["final_reconstructed_sentences"], log_dict["activations"] = [], [], []
+    if verbose:
+        pbar = tqdm(range(num_iterations), position=0, leave=True)
+    else:
+        pbar = range(num_iterations)
+    for i in pbar:
+        # Construct input for the self.model using the embeddings directly
+        embeddings = autoencoder.decode(latent_vectors, attention_mask=None)
+        _ = model(
+            inputs_embeds=embeddings
+        )  # the hook means outputs are saved to activation_saved
+        # We want to maximize activation, which is equivalent to minimizing negative activation
+        loss = loss_fn(activation_saved[0])
+        loss.backward()
+        optimizer.step()
+        losses.append(loss.item())
+        if i == num_iterations - 1:
+            if verbose: tqdm.write(f"Loss at step {i}: {loss.item()}\n", end="")
+            reconstructed_sentences = [unembed_and_decode(
+                model, tokenizer, embeds
+            )[0] for embeds in embeddings]
+            if verbose: tqdm.write(reconstructed_sentences, end="")
+            log_dict["final_reconstructed_sentences"] = reconstructed_sentences
+            log_dict["activations"].append(activation_saved[0].item())
+        optimizer.zero_grad()
+
+    handle.remove()  # Don't forget to remove the hook!
+    return losses, log_dict
+
+def get_device():
+    accelerator = Accelerator()
+    return accelerator.device
 
 def generate_sentence(model, tokenizer, max_length=50, seed=None):
     if seed is not None:
