@@ -16,12 +16,16 @@ import sys
 import json
 import numpy as np
 import time
+from collections import defaultdict
 
 from deep_dream_llm.utils import (
     unembed_and_decode,
     update_plot,
     optimize_for_neuron_whole_input,
     generate_sentence,
+    generate_sentence_batched,
+    optimize_for_neuron_whole_input_batched,
+    get_device
 )
 from deep_dream_llm.autoencoder import (
     LinearAutoEncoder,
@@ -130,16 +134,30 @@ def experiment_2(args):
     """
     Optimizes random sentences for 10 neurons across all 6 mlp layers in GPT2.
     """
+    DEBUG_MODE = False
+    TEXT_OUTPUT_PATH = "experiments/demo/optimized_sentences_TAE_l20_l8_h8.json"
+    TRY_BATCHED_OPTIMIZATION = False
     model = AutoModelForCausalLM.from_pretrained("distilgpt2")
     tokenizer = AutoTokenizer.from_pretrained("distilgpt2")
     autoencoder = TAE("distilgpt2", latent_dim=20)
-
+    repo_id = "Scottviteri/TransformerAutoencoderLatentDim20"
+    model_file_name = "TAE_l20_l8_h8.pt"
+    download_path = hf_hub_download(repo_id=repo_id, filename=model_file_name)
+    map_location = None
+    if not torch.cuda.is_available():
+        map_location = "cpu"
+    autoencoder.load_state_dict(torch.load(download_path, map_location=map_location))
+    device = get_device()
+    autoencoder.to(device)
+    model.to(device)
+    
     seed = 42
     num_tokens = 50
-    original_sentence = generate_sentence(
-        model, tokenizer, max_length=num_tokens, seed=seed
+    number_of_sentences = 5
+    original_sentences = generate_sentence_batched(
+        model, tokenizer, sentence_length=num_tokens, n=number_of_sentences
     )
-    print(f"Sentence we are optimizing: {original_sentence}")
+    print(f"Sentence we are optimizing: {original_sentences}")
 
     neurons = []
     output_optimized_sentences = []
@@ -151,28 +169,48 @@ def experiment_2(args):
     print(
         f"We have {len(output_optimized_sentences)} layers and {len(output_optimized_sentences[0])} neurons per layer"
     )
+    
     start_time = time.time()
     for neuron in tqdm(neurons, desc="Neurons", total=len(neurons)):
         layer_num = neuron["layer_num"]
         neuron_index = neuron["neuron_index"]
-        losses, log_dict = optimize_for_neuron_whole_input(
-            model=model,
-            tokenizer=tokenizer,
-            autoencoder=autoencoder,
-            neuron_index=neuron_index,
-            layer_num=layer_num,
-            num_iterations=64,
-            learning_rate=0.1,
-        )
-        final_reconstructed_sentence = log_dict["reconstructed_sentences"][-1]
-        output_optimized_sentences[layer_num][neuron_index].append(
-            (original_sentence, final_reconstructed_sentence)
-        )
+        neuron_dict = defaultdict(list)
+        neuron_dict["Original Sentences"].extend(original_sentences)
+        output_optimized_sentences[layer_num][neuron_index] = neuron_dict
+        if DEBUG_MODE and neuron_index == 3:
+            break
+        if TRY_BATCHED_OPTIMIZATION:
+            losses, log_dict = optimize_for_neuron_whole_input_batched(
+                model=model,
+                tokenizer=tokenizer,
+                autoencoder=autoencoder,
+                neuron_index=neuron_index,
+                layer_num=layer_num,
+                num_iterations=64,
+                learning_rate=0.1,
+                sentences=original_sentences,
+            )
+            final_reconstructed_sentence = log_dict["final_reconstructed_sentences"]
+            neuron_dict["TAE_l20_l8_h8 final reconstructed sentences"].extend(final_reconstructed_sentence)
+        else:
+            for sentence in original_sentences:
+                losses, log_dict = optimize_for_neuron_whole_input(
+                    model=model,
+                    tokenizer=tokenizer,
+                    autoencoder=autoencoder,
+                    neuron_index=neuron_index,
+                    layer_num=layer_num,
+                    num_iterations=64,
+                    learning_rate=0.1,
+                    sentence=sentence,
+                )
+                neuron_dict["TAE_l20_l8_h8 final reconstructed sentences"].append(log_dict["reconstructed_sentences"][-1])
+        
     end_time = time.time()
     print(output_optimized_sentences)
     print(f"Total time: {end_time - start_time}")
     # save output_optimized_sentences to a json file
-    with open("experiments/demo/optimized_sentences_test1.json", "w") as file:
+    with open(TEXT_OUTPUT_PATH, "w") as file:
         json.dump(output_optimized_sentences, file)
 
 
