@@ -265,7 +265,7 @@ def update_plot(losses, openai_losses, reencode_losses, print_every, save_path=N
     ax1.set_ylabel("Loss", color="b")
     xs = [i*print_every for i in range(len(losses)//print_every)]
     ax1.plot(xs, [losses[x] for x in xs], color="b")
-    ax1.set_ylim(bottom=0, top=max(losses))
+    ax1.set_ylim(bottom=0, top=max(losses[-len(losses)//2:]))
     if reencode_losses:
         ax1.tick_params("y", colors="r")
         ax1.set_ylabel("Reencode Loss", color="r", labelpad=15)
@@ -280,6 +280,7 @@ def update_plot(losses, openai_losses, reencode_losses, print_every, save_path=N
         plt.savefig(save_path)
     else:
         plt.show()
+    plt.draw()
 
 
 def print_results(
