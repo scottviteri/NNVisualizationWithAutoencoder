@@ -67,20 +67,18 @@ class DeepDreamLLMTrainer:
                 self.autoencoder.load_state_dict(loaded)
 
         accelerator = Accelerator()  # TODO actually use this other than just preparing stuff
-        if self.model is None:
-            self.model = AutoModelForCausalLM.from_pretrained("distilgpt2")
+        if self.model is None: self.model = AutoModelForCausalLM.from_pretrained("distilgpt2")
         if self.optimizer is None:
             self.optimizer = torch.optim.AdamW(self.autoencoder.parameters(), lr=self.learning_rate)
         self.model, self.optimizer, self.autoencoder = accelerator.prepare(self.model, self.optimizer, self.autoencoder)
         self.device = accelerator.device
-        for param in self.model.parameters():
-            param.requires_grad = False
-
         #self.lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, 'min')
         #self.lr_scheduler = torch.optim.lr_scheduler.LambdaLR(self.optimizer,
         #    lambda epoch: 10 * epoch / 1001 if epoch / 1001 < 0.1 else 1 - epoch / 1001)
         #self.lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(self.optimizer, gamma=0.99)
-        self.lr_scheduler = None
+        #self.lr_scheduler = None
+        self.lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(self.optimizer, 1000)
+        #self.lr_scheduler = torch.optim.lr_scheduler.OneCycleLR(self.optimizer, max_lr=0.001)
         if self.tokenizer is None:
             self.tokenizer = AutoTokenizer.from_pretrained("distilgpt2", use_fast=True)
         self.tokenizer.pad_token = self.tokenizer.eos_token
@@ -233,7 +231,7 @@ class DeepDreamLLMTrainer:
             #print(self.autoencoder.projection_1.weight.grad)
             self.optimizer.step()
             if self.lr_scheduler is not None:
-                self.lr_scheduler.step(loss)
+                self.lr_scheduler.step()
             self.optimizer.zero_grad()
 
             losses.append(loss.item())
@@ -249,11 +247,13 @@ class DeepDreamLLMTrainer:
                 input_sentence = input_sentences[0]
                 reconstructed_sentences.append(reconstructed_sentence)
 
-                reencode_loss = self.calc_reencode_loss(
-                    input_ids[0].reshape(1, -1), reconstructed_tokens[0].reshape(1, -1)
-                )
-                reencode_losses.append(reencode_loss)
-                openai_loss = 0
+                reencode_loss = None
+                if self.use_reencode:
+                    reencode_loss = self.calc_reencode_loss(
+                        input_ids[0].reshape(1, -1), reconstructed_tokens[0].reshape(1, -1)
+                    )
+                    reencode_losses.append(reencode_loss)
+                openai_loss = None
                 if self.use_openai:
                     openai_loss = self.calc_openai_loss(
                         input_sentence, reconstructed_sentence
@@ -270,7 +270,8 @@ class DeepDreamLLMTrainer:
                     loss.item(),
                     openai_loss,
                     reencode_loss,
-                    num_epochs
+                    num_epochs,
+                    self.lr_scheduler.state_dict()['_last_lr'][0]
                 )
                 if save_path: torch.save(self.autoencoder.state_dict(), save_path)
         return losses, openai_losses, reencode_losses, sentences, reconstructed_sentences

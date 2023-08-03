@@ -12,6 +12,7 @@ class TrainingConfig:
     autoencoder: Optional[object] = None
     optimizer: Optional[Optimizer] = None
     use_openai: bool = False
+    use_reencode: bool = False
     batch_size: int = 32
     latent_dim: float = 100
     learning_rate: float = 0.001
