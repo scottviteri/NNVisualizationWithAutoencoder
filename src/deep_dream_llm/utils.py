@@ -263,13 +263,13 @@ def update_plot(losses, openai_losses, reencode_losses, print_every, save_path=N
     fig, ax1 = plt.subplots(figsize=(10, 6))
     ax1.set_xlabel("Training Step")
     ax1.set_ylabel("Loss", color="b")
-    xs = [i*print_every for i in range(len(reencode_losses))]
+    xs = [i*print_every for i in range(max(len(reencode_losses),len(openai_losses)))]
     ax1.plot(xs, [losses[x] for x in xs], color="b")
+    ax1.set_ylim(bottom=0, top=max(losses))
     if reencode_losses:
         ax1.tick_params("y", colors="r")
         ax1.set_ylabel("Reencode Loss", color="r", labelpad=15)
         ax1.plot([print_every*i for i in range(len(reencode_losses))], reencode_losses, color="r")
-        ax1.set_ylim(bottom=0, top=max(losses[-len(losses)//2:]))
     if openai_losses:
         ax2 = ax1.twinx()
         ax2.set_ylabel("OpenAI Loss", color="g")
@@ -293,7 +293,8 @@ def print_results(
 ):
     print(f"Epoch {epoch}/{total_epochs}, Loss: {round(loss, 4)}")
     print(f"Openai Loss: {round(openai_loss, 4)}")
-    print(f"Reencode Loss: {round(reencode_loss, 4)}")
+    if reencode_loss:
+        print(f"Reencode Loss: {round(reencode_loss, 4)}")
     print(f"Original: {textwrap.fill(repr(original_sentence), width=80)}")
     print(f"Reconstructed: {textwrap.fill(repr(reconstructed_sentence), width=80)}")
     print(f"Lengths: Orig = {len(repr(original_sentence))}")

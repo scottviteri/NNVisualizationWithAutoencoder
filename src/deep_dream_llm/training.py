@@ -249,10 +249,11 @@ class DeepDreamLLMTrainer:
                 input_sentence = input_sentences[0]
                 reconstructed_sentences.append(reconstructed_sentence)
 
-                reencode_loss = self.calc_reencode_loss(
-                    input_ids[0].reshape(1, -1), reconstructed_tokens[0].reshape(1, -1)
-                )
-                reencode_losses.append(reencode_loss)
+                #reencode_loss = self.calc_reencode_loss(
+                #    input_ids[0].reshape(1, -1), reconstructed_tokens[0].reshape(1, -1)
+                #)
+                #reencode_losses.append(reencode_loss)
+                reencode_loss = None
                 openai_loss = 0
                 if self.use_openai:
                     openai_loss = self.calc_openai_loss(
