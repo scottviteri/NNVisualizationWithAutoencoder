@@ -275,5 +275,17 @@
             ],
             "justMyCode": true
         },
+        {
+            "name": "Final Experiment optimize sentence",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/deep_dream_llm/final_experiments.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--experiment_id",
+                "3"
+            ],
+            "justMyCode": true
+        },
     ]
 }

@@ -81,7 +81,9 @@ def optimize_for_neuron_whole_input(
     learning_rate=0.1,
     seed=42,
     sentence=None,
-    verbose=False
+    verbose=False,
+    activation_stop_threshold=999999.9,
+    log_all=False
 ):
     """
     Args:
@@ -166,12 +168,14 @@ def optimize_for_neuron_whole_input(
         _ = model(
             inputs_embeds=embeddings
         )  # the hook means outputs are saved to activation_saved
-        # We want to maximize activation, which is equivalent to minimizing negative activation
+        if np.abs(activation_saved[0].item()) > activation_stop_threshold:
+            tqdm.write(f"Stopping early because activation is {activation_saved[0]} > {activation_stop_threshold}")
+            break
         loss = loss_fn(activation_saved[0])
         loss.backward()
         optimizer.step()
         losses.append(loss.item())
-        if i % (num_iterations // 30) == 0:
+        if log_all or i % (num_iterations // 30) == 0:
             if verbose: tqdm.write(f"Loss at step {i}: {loss.item()}\n", end="")
             reconstructed_sentence = unembed_and_decode(
                 model, tokenizer, embeddings

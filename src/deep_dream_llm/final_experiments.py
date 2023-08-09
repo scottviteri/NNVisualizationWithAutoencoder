@@ -214,6 +214,55 @@ def experiment_2(args):
         json.dump(output_optimized_sentences, file)
 
 
+def experiment_3(args):
+    """
+    This experiment directly optimizes for a sentence. Then we display the results in a table of strings.
+    """
+    model = AutoModelForCausalLM.from_pretrained("distilgpt2")
+    tokenizer = AutoTokenizer.from_pretrained("distilgpt2")
+    autoencoder = MockAutoencoder(latent_dim=768) # acts as a simple identity function
+    device = get_device()
+    autoencoder.to(device)
+    model.to(device)
+    save_name = "test_1"
+    
+    losses, log_dict = optimize_for_neuron_whole_input(
+        model=model,
+        tokenizer=tokenizer,
+        autoencoder=autoencoder,
+        neuron_index=0,
+        layer_num=0,
+        num_iterations=200,
+        learning_rate=0.01,
+        activation_stop_threshold=10.0,
+        log_all=True,
+        verbose=True
+    )
+
+    # plots losses on one side and log_dict["activations"] on the right side in a diff color
+    # make diff lines dotted and dashed
+    fig, ax = plt.subplots()
+    ax.plot(losses, color="blue", label="Loss", linestyle="dashed")
+    ax.set_xlabel("Iteration")
+    ax.set_ylabel("Loss")
+    ax.set_title(f"Loss vs Iteration for {save_name}")
+    ax.legend()
+    ax2 = ax.twinx()
+    ax2.plot(log_dict["activations"], color="orange", label="Activation", linestyle="dotted")
+    ax2.set_ylabel("Activation")
+    ax2.legend()
+    plt.savefig(f"experiments/plots/naive_loss_vs_iteration_{save_name}.png")
+    plt.show()
+    print(losses)
+    print(log_dict["activations"])
+
+    # use tabulate to create a table of the sentences
+    table = []
+    for i, sentence in enumerate(log_dict["reconstructed_sentences"]):
+        table.append([i, sentence])
+    print(tabulate.tabulate(table, headers=["Iteration", "Sentence"]))
+    
+
 def main():
     args = parse_args()
     try:
