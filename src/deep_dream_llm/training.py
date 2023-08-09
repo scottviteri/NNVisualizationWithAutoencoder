@@ -20,12 +20,16 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 from config import TrainingConfig
 from autoencoder import TAE, LinearAutoEncoder, Gpt2AutoencoderBoth
 
-from utils import (
+from deep_dream_llm.utils import (
     unembed_and_decode,
     generate_sentence,
     generate_sentence_batched,
     update_plot,
     print_results,
+    MODEL_NAMES_TO_TYPES,
+    load_hf_model_and_tokenizer,
+    get_model_embedding_dim,
+    get_embeddings
 )
 
 class DeepDreamLLMTrainer:
@@ -44,6 +48,15 @@ class DeepDreamLLMTrainer:
             print("Please input your OpenAI API key in the terminal below:")
             openai.api_key = input()
 
+        self.gpt2_model, self.gpt2_tokenizer = load_hf_model_and_tokenizer("distilgpt2", "gpt2")
+
+        if self.base_model_name is None:
+            self.base_model_name = "distilgpt2"
+        if self.base_model_type is None:
+            self.base_model_type = MODEL_NAMES_TO_TYPES[self.base_model_name]
+
+        if self.model is None: self.model, self.tokenizer = load_hf_model_and_tokenizer(self.base_model_name, self.base_model_type)
+
         # Load the model's parameters from a checkpoint if provided
         if self.autoencoder is None:
             # Default autoencoder
@@ -53,11 +66,11 @@ class DeepDreamLLMTrainer:
                 full_name = self.autoencoder_name
                 self.autoencoder_name = self.autoencoder_name.split('_')[0]
             if self.autoencoder_name == "LinearAutoEncoder":
-                self.autoencoder = LinearAutoEncoder("distilgpt2", latent_dim=self.latent_dim)
+                self.autoencoder = LinearAutoEncoder(get_model_embedding_dim(self.model, self.base_model_type), latent_dim=self.latent_dim)
             elif self.autoencoder_name == "Gpt2AutoencoderBoth":
-                self.autoencoder = Gpt2AutoencoderBoth("distilgpt2", latent_dim=self.latent_dim)
+                self.autoencoder = Gpt2AutoencoderBoth(self.base_model_name, latent_dim=self.latent_dim)
             elif self.autoencoder_name == "TAE":
-                self.autoencoder = TAE("distilgpt2", latent_dim=self.latent_dim)
+                self.autoencoder = TAE(get_model_embedding_dim(self.model, self.base_model_type), latent_dim=self.latent_dim)
             else:
                 raise NotImplementedError(f"Autoencoder {config.autoencoder_name} not implemented")
             if full_name:
@@ -67,10 +80,9 @@ class DeepDreamLLMTrainer:
                 self.autoencoder.load_state_dict(loaded)
 
         accelerator = Accelerator()  # TODO actually use this other than just preparing stuff
-        if self.model is None: self.model = AutoModelForCausalLM.from_pretrained("distilgpt2")
         if self.optimizer is None:
             self.optimizer = torch.optim.AdamW(self.autoencoder.parameters(), lr=self.learning_rate)
-        self.model, self.optimizer, self.autoencoder = accelerator.prepare(self.model, self.optimizer, self.autoencoder)
+        self.model, self.gpt2_model, self.optimizer, self.autoencoder = accelerator.prepare(self.model, self.gpt2_model, self.optimizer, self.autoencoder)
         self.device = accelerator.device
         #self.lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, 'min')
         #self.lr_scheduler = torch.optim.lr_scheduler.LambdaLR(self.optimizer,
@@ -80,16 +92,10 @@ class DeepDreamLLMTrainer:
         #self.lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(self.optimizer, 1000, T_mult=2)
         self.lr_scheduler = torch.optim.lr_scheduler.ConstantLR(self.optimizer)
         #self.lr_scheduler = torch.optim.lr_scheduler.OneCycleLR(self.optimizer, max_lr=0.001)
-        if self.tokenizer is None:
-            self.tokenizer = AutoTokenizer.from_pretrained("distilgpt2", use_fast=True)
-        self.tokenizer.pad_token = self.tokenizer.eos_token
 
         #print("Testing autoencoder shapes")
         #self.test_autoencoder_shapes()
         #print("Autoencoder shapes test passed")
-
-    def get_embeddings(self, input_ids):
-        return self.model.transformer.wte(input_ids)
 
     def encode_sentence(self, sentence):
         assert isinstance(sentence, str), "sentence must be a string"
@@ -106,8 +112,9 @@ class DeepDreamLLMTrainer:
             torch.tensor: the tokens, of shape (batch_size, sequence_length)
         """
         with torch.no_grad():
-            pretrained_embeddings = self.model.transformer.wte.weight
-            dot_product = torch.matmul(embeddings, pretrained_embeddings.t())
+            pretrained_embeddings_matrix = self.model.transformer.wte.weight
+            # TODO Consider subtracting the positional embeddings
+            dot_product = torch.matmul(embeddings, pretrained_embeddings_matrix.t())
             _, tokens = torch.max(dot_product, dim=-1)
         return tokens
 
@@ -120,6 +127,11 @@ class DeepDreamLLMTrainer:
         Calculate the mean squared error (MSE) between the average token embeddings
         generated by the third transformer block of a GPT-2 model, given original and
         reconstructed input sequences.
+
+        WARNING: original and reconstructed should not have the positional embeddings,
+            positional embeddings will be added by model(inputs_embeds=...)
+
+            # TODO make it so that the wpe part of the  model is zero. and subtract pos from reconstruced?
 
         Args:
             original (torch.Tensor): Original input sequences.
@@ -166,6 +178,9 @@ class DeepDreamLLMTrainer:
         Calculate the mean squared error (MSE) between the average token embeddings
         generated by all transformer blocks of a GPT-2 model, given original and
         reconstructed input sequences.
+
+        WARNING: original and reconstructed should not have the positional embeddings,
+            positional embeddings will be added by model(inputs_embeds=...)
 
         Args:
             original (torch.Tensor): Original input sequences.
@@ -231,9 +246,9 @@ class DeepDreamLLMTrainer:
 
     def calc_reencode_loss(self, input_ids_1, input_ids_2):
         # this loss is distinguished from original loss by decoding, re-encoding and taking embeddings distance
-        embeddings_1, embeddings_2 = self.get_embeddings(
-            input_ids_1
-        ), self.get_embeddings(input_ids_2)
+        embeddings_1, embeddings_2 = get_embeddings(self.model,
+            input_ids_1, self.base_model_type
+        ), get_embeddings(self.model, input_ids_2, self.base_model_type)
         # truncate the longer embedding to be the size of the shorter one
         if embeddings_1.shape[1] > embeddings_2.shape[1]:
             embeddings_1 = embeddings_1[:, : embeddings_2.shape[1], :]
@@ -263,7 +278,7 @@ class DeepDreamLLMTrainer:
                 print("Ran out of sentences, generating another batch")
                 nsent = num_sentences if num_sentences else 1000
                 new_sentences = generate_sentence_batched(
-                    self.model, self.tokenizer, n=nsent
+                    self.gpt2_model, self.tokenizer, n=nsent
                 )
                 sentences = np.append(sentences, new_sentences)
 
@@ -275,12 +290,13 @@ class DeepDreamLLMTrainer:
             input_ids = encoding["input_ids"].to(self.device)
             attention_mask = encoding["attention_mask"].to(self.device)
 
-            original_embeddings = self.get_embeddings(input_ids)
-            reconstructed_embeddings = self.autoencoder(original_embeddings, attention_mask.T==0)
-            direct_loss = self.calc_direct_loss(original_embeddings, reconstructed_embeddings)
+            original_embeddings = get_embeddings(self.model, input_ids, self.base_model_type)
+            original_embeddings_plus_positional = original_embeddings + self.model.transformer.wpe(original_embeddings)
+            reconstructed_embeddings = self.autoencoder(original_embeddings_plus_positional, attention_mask.T==0)
+            direct_loss = self.calc_direct_loss(original_embeddings_plus_positional, reconstructed_embeddings)
             # not passing attention mask to GPT2
             model_embed_loss = self.model_embed_loss(original_embeddings, reconstructed_embeddings, attention_mask)
-            loss = direct_loss*self.lam + model_embed_loss*(1.0-self.lam)
+            loss = direct_loss * self.lam + model_embed_loss * (1.0 - self.lam)
             loss.backward()
             #print(self.autoencoder.projection_1.weight.grad)
             self.optimizer.step()
@@ -300,7 +316,7 @@ class DeepDreamLLMTrainer:
                 )[0]
                 input_sentence = input_sentences[0]
                 reconstructed_sentences.append(reconstructed_sentence)
-                direct_loss = self.calc_direct_loss(original_embeddings, reconstructed_embeddings).item()
+                direct_loss = self.calc_direct_loss(original_embeddings_plus_positional, reconstructed_embeddings).item()
                 direct_losses.append(direct_loss)
                 reencode_loss = None
                 if self.use_reencode:
@@ -372,14 +388,14 @@ class DeepDreamLLMTrainer:
 
         # Set the seed for reproducibility
         sentence = generate_sentence(
-            self.model, self.tokenizer, max_length=num_tokens, seed=seed
+            self.gpt2_model, self.tokenizer, max_length=num_tokens, seed=seed
         )
         if verbose: tqdm.write("Original sentence is:")
         if verbose: tqdm.write(sentence)
         log_dict["original_sentence"] = sentence
 
         input_ids = self.encode_sentence(sentence)
-        original_embeddings = self.get_embeddings(input_ids)
+        original_embeddings = get_embeddings(self.model, input_ids, self.base_model_type) # TODO handle positional encodings
         latent = self.autoencoder.encode(original_embeddings, attention_mask=None) # batch size 1, no mask needed
         latent_vectors = latent.detach().clone().to(self.device)
         latent_vectors.requires_grad = True
@@ -450,10 +466,10 @@ class DeepDreamLLMTrainer:
 
         # 1
         sentence = generate_sentence(
-            self.model, self.tokenizer, max_length=10
+            self.gpt2_model, self.tokenizer, max_length=10
         )
         input_ids = self.encode_sentence(sentence)
-        original_embeddings = self.get_embeddings(input_ids)
+        original_embeddings = get_embeddings(self.model, input_ids, self.base_model_type)
         latent = self.autoencoder.encode(original_embeddings, attention_mask=None)
         assert latent.shape[2] == self.autoencoder.latent_dim, (
             f"latent dim {latent.shape[2]} does not match autoencoder latent dim {self.autoencoder.latent_dim}"

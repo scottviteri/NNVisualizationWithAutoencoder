@@ -9,6 +9,8 @@ class TrainingConfig:
     load_path: str = None
     tokenizer: AutoTokenizer = None
     model: AutoModelForCausalLM = None
+    base_model_name: str = None
+    base_model_type: str = None
     autoencoder: Optional[object] = None
     optimizer: Optional[Optimizer] = None
     use_openai: bool = False

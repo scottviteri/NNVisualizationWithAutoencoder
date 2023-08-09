@@ -116,9 +116,11 @@ def experiment_1(args):
     Trains a complete autoencoder.
     TODO Complete this function
     """
+    batch_size = 1
     cfg = config.TrainingConfig(
         autoencoder_name="LinearAutoEncoder",
-        latent_dim=latent_dim,
+        latent_dim=20,
+        base_model_name="distilbert-base-uncased",
         # load_path=LOAD_PATH,
         # autoencoder=autoencoder,
         learning_rate=1e-4,
@@ -128,6 +130,19 @@ def experiment_1(args):
         batch_size=batch_size,
     )
     trainer = DeepDreamLLMTrainer(cfg)
+    n_epochs = 10
+    (
+        losses,
+        openai_losses,
+        reencode_losses,
+        sentences,
+        reconstructed_sentences,
+    ) = trainer.train_autoencoder(
+        num_epochs=n_epochs,
+        print_every=1,
+        save_path="Checkpoints/linear_testing.pt",
+        num_sentences=n_epochs * batch_size,
+    )
 
 
 def experiment_2(args):

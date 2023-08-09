@@ -264,6 +264,18 @@
             "justMyCode": true
         },
         {
+            "name": "Final Experiment Train AE",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/deep_dream_llm/final_experiments.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--experiment_id",
+                "1"
+            ],
+            "justMyCode": true
+        },
+        {
             "name": "Final Experiment Demo Text",
             "type": "python",
             "request": "launch",

@@ -93,27 +93,27 @@ class MockAutoencoder(torch.nn.Module):
 
 
 class TAE(torch.nn.Module):
-    def __init__(self, model_checkpoint, latent_dim, nhead=4, num_layers=4):
+    def __init__(self, base_model_nembd, latent_dim, nhead=4, num_layers=4):
         """
         TODO: Test this
         """
         super().__init__()
 
         # Load the pretrained model
-        base_model = AutoModelForCausalLM.from_pretrained(model_checkpoint)
+        self.base_model_nembd = base_model_nembd
 
         # Create the encoder
         encoder_layer = nn.TransformerEncoderLayer(
-            d_model=base_model.config.n_embd, nhead=nhead
+            d_model=base_model_nembd, nhead=nhead
         )
         self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
 
         # Create the decoder from scratch
-        self.projection_1 = Linear(base_model.config.n_embd, latent_dim)
-        self.projection_2 = Linear(latent_dim, base_model.config.n_embd)
+        self.projection_1 = Linear(base_model_nembd, latent_dim)
+        self.projection_2 = Linear(latent_dim, base_model_nembd)
 
         decoder_layer = nn.TransformerEncoderLayer(
-            d_model=base_model.config.n_embd, nhead=nhead
+            d_model=base_model_nembd, nhead=nhead
         )
         self.decoder = nn.TransformerEncoder(
             decoder_layer, num_layers=num_layers
@@ -243,16 +243,14 @@ class Gpt2AutoencoderBoth(torch.nn.Module):
 
 
 class LinearAutoEncoder(torch.nn.Module):
-    def __init__(self, model_checkpoint, latent_dim=100):
+    def __init__(self, base_model_nembd, latent_dim=100):
         super().__init__()
 
-        # Load the pretrained model
-        base_model = AutoModelForCausalLM.from_pretrained(model_checkpoint)
         self.latent_dim = latent_dim
 
         # Create the encoder
-        self.encoder = Linear(base_model.config.n_embd, latent_dim)
-        self.decoder = Linear(latent_dim, base_model.config.n_embd)
+        self.encoder = Linear(base_model_nembd, latent_dim)
+        self.decoder = Linear(latent_dim, base_model_nembd)
 
     def encode(self, input_embeds, **kwargs):
         return self.encoder(input_embeds)

@@ -9,11 +9,48 @@ from tqdm import tqdm
 import random
 import textwrap
 from accelerate import Accelerator
+from transformers import DistilBertTokenizer, DistilBertModel
+from transformers import AutoTokenizer, AutoModelForCausalLM
 
 import matplotlib.pyplot as plt
 
 from torch.cuda.amp import autocast
 from sklearn.metrics.pairwise import cosine_similarity
+
+MODEL_NAMES_TO_TYPES = {
+    "gpt2": "gpt2",
+    "distilgpt2": "gpt2",
+    "bert": "bert",
+    "bert-base-uncased": "bert",
+    "distilbert-base-uncased": "bert"
+}
+
+def load_hf_model_and_tokenizer(model_name, model_type):
+    if model_type == "gpt2":
+        model = AutoModelForCausalLM.from_pretrained(model_name)
+        tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True)
+        tokenizer.pad_token = tokenizer.eos_token
+    elif model_type == "bert":
+        model = DistilBertModel.from_pretrained(model_name)
+        tokenizer = DistilBertTokenizer.from_pretrained(model_name)
+        tokenizer.pad_token = tokenizer.sep_token
+    else:
+        raise NotImplementedError(f"Model type {model_type} not implemented")
+    return model, tokenizer
+
+def get_model_embedding_dim(model, model_type):
+    if model_type == "gpt2":
+        return model.config.n_embd
+    elif model_type == "bert":
+        return model.config.dim
+    else:
+        raise NotImplementedError(f"Model type {model_type} not implemented")
+
+def get_embeddings(model, input_ids, model_type):
+    if model_type == "gpt2":
+        return model.transformer.wte(input_ids)
+    elif model_type == "bert":
+        return model.embeddings.word_embeddings(input_ids)
 
 def get_sentence_similarity(sentence1, sentence2):
     # Get embeddings for both sentences
