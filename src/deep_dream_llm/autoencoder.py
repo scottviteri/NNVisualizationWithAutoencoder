@@ -39,7 +39,7 @@ class mock_transformer(torch.nn.Module):
 class mock_gpt2(torch.nn.Module):
     def __init__(self):
         """
-        Mock gpt2 model for testing.
+        Mock gpt2 model for testing. All layers are the identity function.
         Implements layers:
             lm_head,
             transformer.wte
@@ -49,7 +49,7 @@ class mock_gpt2(torch.nn.Module):
             inputs_embeds forward,
         """
         super().__init__()
-        self.lm_head = Linear(768, 768)
+        self.lm_head = torch.nn.Identity()
         self.transformer = mock_transformer()
 
     def forward(self, inputs_ids=None, input_embeds=None, attention_mask=None):
@@ -68,18 +68,28 @@ class mock_gpt2(torch.nn.Module):
 class MockAutoencoder(torch.nn.Module):
     def __init__(self, latent_dim=100):
         """
-        Mock autoencoder model for testing.
+        Mock autoencoder model for testing. Make everything the identity function if latent_dim is 768.
         """
         super().__init__()
-        self.encoder = Linear(768, latent_dim)
-        self.decoder = Linear(latent_dim, 768)
+        if latent_dim == 768:
+            self.encoder = torch.nn.Identity()
+            self.decoder = torch.nn.Identity()
+        else:
+            self.encoder = Linear(768, latent_dim)
+            self.decoder = Linear(latent_dim, 768)
         self.latent_dim = latent_dim
 
     def encode(self, input_embeds, **kwargs):
-        return self.encoder(input_embeds, **kwargs)
+        if self.latent_dim == 768:
+            return self.encoder(input_embeds)
+        else:
+            return self.encoder(input_embeds, **kwargs)
 
     def decode(self, latent, **kwargs):
-        return self.decoder(latent, **kwargs)
+        if self.latent_dim == 768:
+            return self.decoder(latent)
+        else:
+            return self.decoder(latent, **kwargs)
 
     def forward(self, inputs_embeds):
         """
