@@ -57,7 +57,8 @@ def experiment_0(args):
     # epochs to plot
     epochs_to_plot = [10, 32, 64, 128, 256]
     latent_dims, losses_total = {}, {}
-    for latent_dim in tqdm(range(1, 102, 10), desc="Latent Dims"):
+    latent_dims_to_try = [1, 2, 3, 4, 6, 8, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+    for latent_dim in tqdm(latent_dims_to_try, desc="Latent Dims"):
         batch_size = 1
         cfg = config.TrainingConfig(
             autoencoder_name="LinearAutoEncoder",
@@ -114,32 +115,45 @@ def plot_0(losses, latent_dims, plot_name):
 def experiment_1(args):
     """
     Trains a complete autoencoder.
-    TODO Complete this function
     """
     cfg = config.TrainingConfig(
         autoencoder_name="LinearAutoEncoder",
-        latent_dim=latent_dim,
+        latent_dim=20,
         # load_path=LOAD_PATH,
         # autoencoder=autoencoder,
         learning_rate=1e-4,
         use_openai=False,
         # lr_scheduler=lr_scheduler,
         is_notebook=False,
-        batch_size=batch_size,
+        batch_size=1,
     )
     trainer = DeepDreamLLMTrainer(cfg)
+    n_epochs = 256
+    (
+        losses,
+        openai_losses,
+        reencode_losses,
+        sentences,
+        reconstructed_sentences,
+    ) = trainer.train_autoencoder(
+        num_epochs=n_epochs,
+        print_every=100000,
+        save_path="Checkpoints/linear_testing.pt",
+        num_sentences=n_epochs,
+    )
 
 
 def experiment_2(args):
     """
     Optimizes random sentences for 10 neurons across all 6 mlp layers in GPT2.
+    #pylint: disable=too-many-locals
     """
     DEBUG_MODE = False
     TEXT_OUTPUT_PATH = "experiments/demo/optimized_sentences_TAE_l20_l8_h8.json"
     TRY_BATCHED_OPTIMIZATION = False
     model = AutoModelForCausalLM.from_pretrained("distilgpt2")
     tokenizer = AutoTokenizer.from_pretrained("distilgpt2")
-    autoencoder = TAE("distilgpt2", latent_dim=20)
+    autoencoder = TAE("distilgpt2", latent_dim=20, num_layers=8, nhead=8)
     repo_id = "Scottviteri/TransformerAutoencoderLatentDim20"
     model_file_name = "TAE_l20_l8_h8.pt"
     download_path = hf_hub_download(repo_id=repo_id, filename=model_file_name)
@@ -212,6 +226,7 @@ def experiment_2(args):
     # save output_optimized_sentences to a json file
     with open(TEXT_OUTPUT_PATH, "w") as file:
         json.dump(output_optimized_sentences, file)
+    return output_optimized_sentences
 
 
 def experiment_3(args):
@@ -232,8 +247,8 @@ def experiment_3(args):
         autoencoder=autoencoder,
         neuron_index=0,
         layer_num=0,
-        num_iterations=200,
-        learning_rate=0.01,
+        num_iterations=32,
+        learning_rate=0.1,
         activation_stop_threshold=10.0,
         log_all=True,
         verbose=True
