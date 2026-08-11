@@ -1,0 +1,291 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: Current File",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
+            "name": "Train Autoencoder Short Linear",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/deep_dream_llm/run_experiment.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--train_autoencoder",
+                "--save_path",
+                "test_1.pt"
+            ],
+            "justMyCode": true
+        },
+        {
+            "name": "Train Autoencoder Linear (Batch Size 1)",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/deep_dream_llm/run_experiment.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--train_autoencoder",
+                "--batch_size",
+                "1",
+                "--save_path",
+                "LinearAutoEncoder_Linear_1.pt",
+                "--n_epochs",
+                "1000",
+                "--autoencoder_lr",
+                "0.0005"
+            ],
+            "justMyCode": true
+        },
+        {
+            "name": "Train Autoencoder Linear (Batch Size 4)",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/deep_dream_llm/run_experiment.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--train_autoencoder",
+                "--batch_size",
+                "4",
+                "--save_path",
+                "LinearAutoEncoder_Linear_1.pt",
+                "--n_epochs",
+                "3000",
+                "--autoencoder_lr",
+                "0.0005"
+            ],
+            "justMyCode": true
+        },
+        {
+            "name": "Train Autoencoder GPT2",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/deep_dream_llm/run_experiment.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--train_autoencoder",
+                "--save_path",
+                "test_1.pt",
+                "--n_epochs",
+                "1000",
+                "--autoencoder_name",
+                "Gpt2AutoencoderBoth"
+            ],
+            "justMyCode": true
+        },
+        {
+            "name": "Train Autoencoder GPT2 (Short)",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/deep_dream_llm/run_experiment.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--train_autoencoder",
+                "--save_path",
+                "test_1.pt",
+                "--n_epochs",
+                "2",
+                "--autoencoder_name",
+                "Gpt2AutoencoderBoth"
+            ],
+            "justMyCode": true
+        },
+        {
+            "name": "Train Autoencoder TAE (Short)",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/deep_dream_llm/run_experiment.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--train_autoencoder",
+                "--save_path",
+                "test_1.pt",
+                "--n_epochs",
+                "2",
+                "--autoencoder_name",
+                "TAE"
+            ],
+            "justMyCode": true
+        },
+        {
+            "name": "Train Autoencoder TAE",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/deep_dream_llm/run_experiment.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--train_autoencoder",
+                "--save_path",
+                "TAE_1.pt",
+                "--n_epochs",
+                "3000",
+                "--autoencoder_name",
+                "TAE",
+                "--lr_scheduler",
+                "LinearWarmup"
+            ],
+            "justMyCode": true
+        },
+        {
+            "name": "Optimize one sentence",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/deep_dream_llm/run_experiment.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--autoencoder_path",
+                "TAE_1.pt",
+                "--autoencoder_name",
+                "TAE",
+            ],
+            "justMyCode": true
+        },
+        {
+            "name": "[OLD] Optimize a lot of sentences",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/deep_dream_llm/run_experiment.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--autoencoder_path",
+                "TAE_1.pt",
+                "--autoencoder_name",
+                "TAE",
+                "--optimize_n_sentences",
+                "20",
+                "--layer_num",
+                "5",
+                "--neuron_index",
+                "9"
+            ],
+            "justMyCode": true
+        },
+        {
+            "name": "Optimize a lot of sentences",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/deep_dream_llm/run_experiment.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--autoencoder_name",
+                "TAE_10001_50",
+                "--experiment_num",
+                "1",
+                "--optimize_n_sentences",
+                "10",
+                "--layer_num",
+                "1",
+                "--neuron_index",
+                "15"
+            ],
+            "justMyCode": true
+        },
+        {
+            "name": "Optimize 2 Sentences",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/deep_dream_llm/run_experiment.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--autoencoder_name",
+                "TAE_10001_50",
+                "--experiment_num",
+                "1",
+                "--optimize_n_sentences",
+                "2",
+                "--layer_num",
+                "1",
+                "--neuron_index",
+                "5"
+            ],
+            "justMyCode": true
+        },
+        {
+            "name": "Optimize sentences for many neurons HF Hub",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/deep_dream_llm/run_experiment.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--autoencoder_name",
+                "TAE_10001_50",
+                "--experiment_num",
+                "2",
+                "--optimize_n_sentences",
+                "5",
+            ],
+            "justMyCode": true
+        },
+        {
+            "name": "Optimize sentences for many neurons Linear",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/deep_dream_llm/run_experiment.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--autoencoder_name",
+                "LinearAutoEncoder_Linear_1.pt",
+                "--experiment_num",
+                "3",
+                "--optimize_n_sentences",
+                "5",
+            ],
+            "justMyCode": true
+        },
+        {
+            "name": "Test optimize_for_neuron_whole_input",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/deep_dream_llm/run_experiment.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--experiment_num",
+                "4",
+            ],
+            "justMyCode": true
+        },
+        {
+            "name": "Final Experiment Loss vs. latent dim",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/deep_dream_llm/final_experiments.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--experiment_id",
+                "0"
+            ],
+            "justMyCode": true
+        },
+        {
+            "name": "Final Experiment Demo Text",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/deep_dream_llm/final_experiments.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--experiment_id",
+                "2"
+            ],
+            "justMyCode": true
+        },
+        {
+            "name": "Final Experiment optimize sentence",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/deep_dream_llm/final_experiments.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--experiment_id",
+                "3"
+            ],
+            "justMyCode": true
+        },
+    ]
+}
