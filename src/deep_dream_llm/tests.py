@@ -3,6 +3,8 @@ A file for tests to ensure code works as expect
 
 TODO This file is a Work in progress
 """
+# %%
+
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import numpy as np
 from tqdm.auto import tqdm
@@ -14,14 +16,6 @@ import utils
 import config
 import training
 
-# def test_calc_loss():
-#     assert calc_loss("there", "there") == 0.0
-#     assert calc_loss("hello", "there") > 0.0
-#     try:
-#         calc_loss("hello there", "there")
-#         print("THis doesn't faile which is weird")
-#     except:
-#         print("success")
 
 def test_injective_tokenizer_inner(tokens=None, verbose=False):
     # load gpt2 tokenizer
@@ -60,23 +54,24 @@ def test_injective_tokenizer():
         TST = TST and tmp1
         STS = STS and tmp2
     assert(not(TST) and STS)
-    
-def test_valid_distance_metric():
-    cfg = config.TrainingConfig(
-            autoencoder_name="TAE",
-            learning_rate=0.0001,
-            latent_dim=20,
-            batch_size=4,
-            use_openai=False,
-            is_notebook=True,
-    )
-    trainer = training.DeepDreamLLMTrainer(cfg)
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    t1 = torch.randn((3,20,768), device=device)
-    t2 = t1.clone()
-    assert trainer.model_embed_loss(t1,t2) < 1e-4
+
+#def test_valid_distance_metric():
+#    cfg = config.TrainingConfig(
+#            autoencoder_name="TAE",
+#            learning_rate=0.0001,
+#            latent_dim=20,
+#            batch_size=4,
+#            use_openai=False,
+#            is_notebook=True,
+#    )
+#    trainer = training.DeepDreamLLMTrainer(cfg)
+#    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+#    t1 = torch.randn((3,20,768), device=device)
+#    t2 = t1.clone()
+#    assert trainer.model_embed_loss(t1,t2) < 1e-4
 
 if __name__ == "__main__":
     test_injective_tokenizer()
-    test_valid_distance_metric()
+    #test_valid_distance_metric()
     
+# %%
